@@ -14,7 +14,14 @@ export interface WorkerProfile {
 export interface CognitiveBaseline {
   stroopScore: number
   reflexVelocityMs: number
+  // Legacy numeric score kept for UI compatibility (0-100)
   vocalAccuracy: number
+  // New: lightweight speaker embedding (192-dim)
+  vocalEmbedding?: number[]
+  // New: enrollment quality (0-1)
+  vocalQuality?: number
+  // New: similarity threshold used for verification
+  vocalSimilarityThreshold?: number
   reactionTimeMs: number
 }
 

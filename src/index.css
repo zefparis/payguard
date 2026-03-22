@@ -2,6 +2,9 @@
   --bg: #0a0f1e;
   --bg2: #111827;
   --bg3: #1a2236;
+  /* PayGuard uses green accent, but we keep --cyan for compatibility with shared components */
+  --cyan: #22c55e;
+  --cyan2: #16a34a;
   --green: #22c55e;
   --green2: #16a34a;
   --white: #ffffff;
@@ -123,6 +126,7 @@ label {
 }
 
 .badge-green { background: rgba(34,197,94,0.12);  color: var(--green); border: 1px solid rgba(34,197,94,0.25); }
+.badge-cyan  { background: rgba(34,197,94,0.12);  color: var(--green); border: 1px solid rgba(34,197,94,0.25); }
 .badge-amber { background: rgba(245,158,11,0.12); color: var(--amber); border: 1px solid rgba(245,158,11,0.25); }
 
 .progress-bar {

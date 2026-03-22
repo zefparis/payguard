@@ -26,7 +26,7 @@ export function SelfieCapture({ onCapture, loading }: Props) {
       <div style={{
         position: 'relative', width: '100%', maxWidth: 340, margin: '0 auto 20px',
         borderRadius: 12, overflow: 'hidden',
-        border: `2px solid ${captured ? 'var(--green)' : 'var(--green)'}`,
+        border: `2px solid ${captured ? 'var(--green)' : 'var(--cyan)'}`,
         aspectRatio: '4/3', background: 'var(--bg3)'
       }}>
         <video
@@ -50,7 +50,7 @@ export function SelfieCapture({ onCapture, loading }: Props) {
           position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
           background: 'rgba(0,0,0,0.6)', borderRadius: 20, padding: '3px 10px',
           fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
-          color: captured ? 'var(--green)' : 'var(--green)'
+          color: captured ? 'var(--green)' : 'var(--cyan)'
         }}>
           {captured ? '✓ CAPTURED' : 'LIVE'}
         </div>
