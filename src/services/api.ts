@@ -1,9 +1,11 @@
 const API = import.meta.env.VITE_API_URL || 'https://hybrid-vector-api.onrender.com'
-const TENANT = import.meta.env.VITE_TENANT_ID || 'demo-tenant'
-const API_KEY = import.meta.env.VITE_HV_API_KEY || ''
+// Doit venir de l'environnement Vite (pas de fallback silencieux en prod)
+const TENANT = import.meta.env.VITE_TENANT_ID
+const API_KEY = import.meta.env.VITE_HV_API_KEY
 
 const headers = () => ({
   'Content-Type': 'application/json',
+  // Doit envoyer la valeur brute depuis import.meta.env
   'x-api-key': API_KEY,
 })
 
@@ -12,7 +14,7 @@ export async function enrollWorker(payload: {
   first_name: string
   last_name: string
   email: string
-  tenant_id: string
+  tenant_id?: string
   cognitive_baseline?: object
 }): Promise<{ success: boolean; student_id: string; confidence: number }> {
   const res = await fetch(`${API}/edguard/enroll`, {
