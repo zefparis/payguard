@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SelfieCapture } from '../components/SelfieCapture'
 import { verifyWorker } from '../services/api'
@@ -12,6 +12,122 @@ const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ]
+
+type IdentityStepProps = {
+  firstName: string
+  lastName: string
+  onSubmit: (e: FormEvent) => void
+  onFirstNameChange: (e: ChangeEvent<HTMLInputElement>) => void
+  onLastNameChange: (e: ChangeEvent<HTMLInputElement>) => void
+}
+
+const IdentityStep = memo(function IdentityStep({
+  firstName,
+  lastName,
+  onSubmit,
+  onFirstNameChange,
+  onLastNameChange,
+}: IdentityStepProps) {
+  return (
+    <>
+      <div className="badge badge-green">Step 1 — Identity</div>
+      <h1 className="step-title">Confirm Payment</h1>
+      <p className="step-sub">Enter your name. Then confirm with a selfie.</p>
+      <form onSubmit={onSubmit} style={{ width: '100%' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="field">
+            <label>First Name *</label>
+            <input value={firstName} onChange={onFirstNameChange} required placeholder="John" />
+          </div>
+          <div className="field">
+            <label>Last Name *</label>
+            <input value={lastName} onChange={onLastNameChange} required placeholder="Smith" />
+          </div>
+        </div>
+        <button className="btn btn-primary" type="submit">
+          Continue →
+        </button>
+      </form>
+    </>
+  )
+})
+
+type PaymentDetailsStepProps = {
+  amount: string
+  employer: string
+  month: string
+  months: string[]
+  year: string
+  onSubmit: (e: FormEvent) => void
+  onAmountChange: (e: ChangeEvent<HTMLInputElement>) => void
+  onEmployerChange: (e: ChangeEvent<HTMLInputElement>) => void
+  onMonthChange: (e: ChangeEvent<HTMLSelectElement>) => void
+  onYearChange: (e: ChangeEvent<HTMLInputElement>) => void
+}
+
+const PaymentDetailsStep = memo(function PaymentDetailsStep({
+  amount,
+  employer,
+  month,
+  months,
+  year,
+  onSubmit,
+  onAmountChange,
+  onEmployerChange,
+  onMonthChange,
+  onYearChange,
+}: PaymentDetailsStepProps) {
+  return (
+    <>
+      <div className="badge badge-green">Step 2 — Payment Details</div>
+      <h1 className="step-title">Payment Details</h1>
+      <p className="step-sub">Amount, pay period, employer/site.</p>
+      <form onSubmit={onSubmit} style={{ width: '100%' }}>
+        <div className="field">
+          <label>Amount (ZAR) *</label>
+          <input
+            type="number"
+            value={amount}
+            onChange={onAmountChange}
+            required
+            placeholder="15000"
+            step="0.01"
+          />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+          <div className="field">
+            <label>Pay Period Month *</label>
+            <select value={month} onChange={onMonthChange} required>
+              <option value="">Select month</option>
+              {months.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>Year *</label>
+            <input
+              type="number"
+              value={year}
+              onChange={onYearChange}
+              required
+              placeholder="2026"
+              min="2020"
+              max="2030"
+            />
+          </div>
+        </div>
+        <div className="field">
+          <label>Employer / Site *</label>
+          <input value={employer} onChange={onEmployerChange} required placeholder="ABC Construction — Site B" />
+        </div>
+        <button className="btn btn-primary" type="submit">
+          Continue →
+        </button>
+      </form>
+    </>
+  )
+})
 
 export function PaymentConfirm() {
   const nav = useNavigate()
@@ -46,17 +162,41 @@ export function PaymentConfirm() {
     behavioralCtrlRef.current = controller
   }, [])
 
-  function handleIdentity(e: React.FormEvent) {
+  const handleFirstNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    setFirstName(e.target.value)
+  }, [])
+
+  const handleLastNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    setLastName(e.target.value)
+  }, [])
+
+  const handleAmountChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    setAmount(e.target.value)
+  }, [])
+
+  const handleMonthChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
+    setMonth(e.target.value)
+  }, [])
+
+  const handleYearChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    setYear(e.target.value)
+  }, [])
+
+  const handleEmployerChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    setEmployer(e.target.value)
+  }, [])
+
+  const handleIdentity = useCallback((e: FormEvent) => {
     e.preventDefault()
     if (!firstName || !lastName) return
     setStep('details')
-  }
+  }, [firstName, lastName])
 
-  function handleDetails(e: React.FormEvent) {
+  const handleDetails = useCallback((e: FormEvent) => {
     e.preventDefault()
     if (!amount || !month || !year) return
     setStep('selfie')
-  }
+  }, [amount, month, year])
 
   async function handleSelfie(b64: string) {
     setSelfieB64(b64)
@@ -95,82 +235,33 @@ export function PaymentConfirm() {
   }
 
   return (
-    <BehavioralCapture onController={onBehavioralController}>
+    <BehavioralCapture enabled={step !== 'identity' && step !== 'details'} onController={onBehavioralController}>
       <div className="page">
         <div className="logo" style={{ cursor: 'pointer' }} onClick={() => nav('/')}>← PAYGUARD</div>
 
         {step === 'identity' && (
-          <>
-            <div className="badge badge-green">Step 1 — Identity</div>
-            <h1 className="step-title">Confirm Payment</h1>
-            <p className="step-sub">Enter your name. Then confirm with a selfie.</p>
-            <form onSubmit={handleIdentity} style={{ width: '100%' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div className="field">
-                  <label>First Name *</label>
-                  <input value={firstName} onChange={e => setFirstName(e.target.value)} required placeholder="John" />
-                </div>
-                <div className="field">
-                  <label>Last Name *</label>
-                  <input value={lastName} onChange={e => setLastName(e.target.value)} required placeholder="Smith" />
-                </div>
-              </div>
-              <button className="btn btn-primary" type="submit">
-                Continue →
-              </button>
-            </form>
-          </>
+          <IdentityStep
+            firstName={firstName}
+            lastName={lastName}
+            onSubmit={handleIdentity}
+            onFirstNameChange={handleFirstNameChange}
+            onLastNameChange={handleLastNameChange}
+          />
         )}
 
         {step === 'details' && (
-          <>
-            <div className="badge badge-green">Step 2 — Payment Details</div>
-            <h1 className="step-title">Payment Details</h1>
-            <p className="step-sub">Amount, pay period, employer/site.</p>
-            <form onSubmit={handleDetails} style={{ width: '100%' }}>
-              <div className="field">
-                <label>Amount (ZAR) *</label>
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={e => setAmount(e.target.value)}
-                  required
-                  placeholder="15000"
-                  step="0.01"
-                />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
-                <div className="field">
-                  <label>Pay Period Month *</label>
-                  <select value={month} onChange={e => setMonth(e.target.value)} required>
-                    <option value="">Select month</option>
-                    {MONTHS.map(m => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Year *</label>
-                  <input
-                    type="number"
-                    value={year}
-                    onChange={e => setYear(e.target.value)}
-                    required
-                    placeholder="2026"
-                    min="2020"
-                    max="2030"
-                  />
-                </div>
-              </div>
-              <div className="field">
-                <label>Employer / Site *</label>
-                <input value={employer} onChange={e => setEmployer(e.target.value)} required placeholder="ABC Construction — Site B" />
-              </div>
-              <button className="btn btn-primary" type="submit">
-                Continue →
-              </button>
-            </form>
-          </>
+          <PaymentDetailsStep
+            amount={amount}
+            employer={employer}
+            month={month}
+            months={MONTHS}
+            year={year}
+            onSubmit={handleDetails}
+            onAmountChange={handleAmountChange}
+            onEmployerChange={handleEmployerChange}
+            onMonthChange={handleMonthChange}
+            onYearChange={handleYearChange}
+          />
         )}
 
         {step === 'selfie' && (
