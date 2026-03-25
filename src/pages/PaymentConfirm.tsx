@@ -1,10 +1,11 @@
-import { memo, useCallback, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SelfieCapture } from '../components/SelfieCapture'
 import { verifyWorker } from '../services/api'
 import { BehavioralCapture } from '../components/BehavioralCapture'
 import type { BehavioralController, BehavioralProfile } from '../hooks/useBehavioral'
 import { generateSessionKeypair, PQ_ALGORITHM, signProfile } from '../services/postQuantum'
+import { behavioralCollector, cognitiveCollector, faceCollector } from '../signal-engine'
 
 type Step = 'identity' | 'details' | 'selfie' | 'verifying' | 'success' | 'failed'
 
@@ -131,6 +132,15 @@ const PaymentDetailsStep = memo(function PaymentDetailsStep({
 
 export function PaymentConfirm() {
   const nav = useNavigate()
+
+  useEffect(() => {
+    behavioralCollector.start()
+
+    return () => {
+      behavioralCollector.stop()
+    }
+  }, [])
+
   const [step, setStep] = useState<Step>('identity')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -199,8 +209,11 @@ export function PaymentConfirm() {
   }, [amount, month, year])
 
   async function handleSelfie(b64: string) {
+    faceCollector.capture(b64)
     setSelfieB64(b64)
     setStep('verifying')
+    const startedAt = performance.now()
+
     try {
       // Stop behavioral capture right before network calls
       const behavioral = behavioralCtrlRef.current?.stop()
@@ -221,11 +234,20 @@ export function PaymentConfirm() {
       setPqSignature(pq_signature)
 
       const res = await verifyWorker({ selfie_b64: b64, first_name: firstName, last_name: lastName })
+      const score = Math.round(res.similarity)
+      const durationMs = Math.round(performance.now() - startedAt)
+
+      cognitiveCollector.record({
+        testId: 'payment-confirm',
+        score,
+        durationMs,
+      })
+
       if (res.verified) {
-        setResult({ similarity: Math.round(res.similarity), firstName: res.first_name })
+        setResult({ similarity: score, firstName: res.first_name })
         setStep('success')
       } else {
-        setResult({ similarity: Math.round(res.similarity), firstName: firstName })
+        setResult({ similarity: score, firstName: firstName })
         setStep('failed')
       }
     } catch (err) {
