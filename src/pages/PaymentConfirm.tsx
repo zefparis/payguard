@@ -5,7 +5,7 @@ import { verifyWorker } from '../services/api'
 import { BehavioralCapture } from '../components/BehavioralCapture'
 import type { BehavioralController, BehavioralProfile } from '../hooks/useBehavioral'
 import { generateSessionKeypair, PQ_ALGORITHM, signProfile } from '../services/postQuantum'
-import { behavioralCollector, cognitiveCollector, faceCollector } from '../signal-engine'
+import { behavioralCollector, cognitiveCollector, faceCollector, signalBus } from '../signal-engine'
 
 type Step = 'identity' | 'details' | 'selfie' | 'verifying' | 'success' | 'failed'
 
@@ -151,6 +151,18 @@ export function PaymentConfirm() {
   const [result, setResult] = useState<{ similarity: number; firstName: string } | null>(null)
   const [, setSelfieB64] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
+
+  useEffect(() => {
+    if (step === 'selfie') {
+      signalBus.pause()
+
+      return () => {
+        signalBus.resume()
+      }
+    }
+
+    signalBus.resume()
+  }, [step])
 
   const behavioralCtrlRef = useRef<BehavioralController | null>(null)
   const [behavioralProfile, setBehavioralProfile] = useState<BehavioralProfile | null>(null)
