@@ -18,12 +18,12 @@ export function NeuralReflex({ onComplete }: Props) {
     el.innerHTML = `
       <div style="width:100%;text-align:center;background:#04070d;border:1px solid rgba(0,255,0,0.18);border-radius:18px;padding:24px 18px;color:#fff;box-sizing:border-box;">
         <div class="badge badge-cyan" style="margin:0 auto 14px;display:inline-block;">Neural Reflex — <span data-round>1</span>/3</div>
-        <div style="font-size:13px;color:var(--grey);margin-bottom:16px;">Touchez la cible dès qu'elle devient <b style="color:#00FF00;">verte</b>.</div>
-        <div data-average style="font-size:13px;color:var(--grey);margin-bottom:14px;">Moyenne : -- ms</div>
+        <div style="font-size:13px;color:var(--grey);margin-bottom:16px;">Tap the target as soon as it turns <b style="color:#00FF00;">green</b>.</div>
+        <div data-average style="font-size:13px;color:var(--grey);margin-bottom:14px;">Average: -- ms</div>
         <button type="button" data-surface style="width:100%;min-height:320px;border-radius:18px;border:1px solid rgba(255,255,255,0.08);background:#090d18;color:#cbd5e1;cursor:pointer;padding:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
-          <div data-status style="font-size:32px;font-weight:800;letter-spacing:0.04em;">Prêt...</div>
-          <div data-subtitle style="font-size:16px;color:#94a3b8;">Attendez le signal</div>
-          <div data-target style="width:200px;height:200px;border-radius:999px;background:#00FF00;box-shadow:0 0 40px rgba(0,255,0,0.4);display:none;align-items:center;justify-content:center;color:#03120a;font-size:30px;font-weight:900;">Appuyez !</div>
+          <div data-status style="font-size:32px;font-weight:800;letter-spacing:0.04em;">Ready...</div>
+          <div data-subtitle style="font-size:16px;color:#94a3b8;">Wait for the signal</div>
+          <div data-target style="width:200px;height:200px;border-radius:999px;background:#00FF00;box-shadow:0 0 40px rgba(0,255,0,0.4);display:none;align-items:center;justify-content:center;color:#03120a;font-size:30px;font-weight:900;">Tap!</div>
         </button>
       </div>
     `
@@ -56,12 +56,12 @@ export function NeuralReflex({ onComplete }: Props) {
 
     const updateAverage = () => {
       if (times.length === 0) {
-        averageEl.textContent = 'Moyenne : -- ms'
+        averageEl.textContent = 'Average: -- ms'
         return
       }
 
       const avg = Math.round(times.reduce((sum, value) => sum + value, 0) / times.length)
-      averageEl.textContent = `Moyenne : ${avg} ms`
+      averageEl.textContent = `Average: ${avg} ms`
     }
 
     const renderReady = () => {
@@ -69,8 +69,8 @@ export function NeuralReflex({ onComplete }: Props) {
       surfaceEl.style.background = '#090d18'
       surfaceEl.style.borderColor = 'rgba(255,255,255,0.08)'
       statusEl.style.color = '#fff'
-      statusEl.textContent = 'Prêt...'
-      subtitleEl.textContent = 'Attendez le signal'
+      statusEl.textContent = 'Ready...'
+      subtitleEl.textContent = 'Wait for the signal'
       targetEl.style.display = 'none'
       updateAverage()
     }
@@ -80,8 +80,8 @@ export function NeuralReflex({ onComplete }: Props) {
       surfaceEl.style.background = '#03120a'
       surfaceEl.style.borderColor = 'rgba(0,255,0,0.48)'
       statusEl.style.color = '#00FF00'
-      statusEl.textContent = 'Appuyez !'
-      subtitleEl.textContent = 'Touchez immédiatement la cible'
+      statusEl.textContent = 'Tap!'
+      subtitleEl.textContent = 'Tap the target immediately'
       targetEl.style.display = 'flex'
       updateAverage()
     }
@@ -91,7 +91,7 @@ export function NeuralReflex({ onComplete }: Props) {
       surfaceEl.style.borderColor = 'rgba(255,255,255,0.08)'
       statusEl.style.color = color
       statusEl.textContent = label
-      subtitleEl.textContent = 'Préparation du round suivant'
+      subtitleEl.textContent = 'Preparing the next round'
       targetEl.style.display = 'none'
       updateAverage()
     }
@@ -119,7 +119,7 @@ export function NeuralReflex({ onComplete }: Props) {
       }
 
       const remaining = Math.max(0, readyDelay - (now - readyStartedAt))
-      subtitleEl.textContent = `Signal dans ${(remaining / 1000).toFixed(1)}s`
+      subtitleEl.textContent = `Signal in ${(remaining / 1000).toFixed(1)}s`
       rafId = window.requestAnimationFrame(readyLoop)
     }
 
@@ -161,7 +161,7 @@ export function NeuralReflex({ onComplete }: Props) {
         window.clearTimeout(readyTimeout)
         cancelAnimationFrame(rafId)
         phase = 'feedback'
-        renderFeedback('Trop tôt !', '#ef4444')
+        renderFeedback('Too early!', '#ef4444')
         feedbackTimeout = window.setTimeout(() => {
           startReadyPhase()
         }, 700)

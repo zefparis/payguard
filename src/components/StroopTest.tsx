@@ -5,10 +5,10 @@ type Props = {
 }
 
 const COLORS = [
-  { key: 'RED', label: 'Rouge', hex: '#ef4444' },
-  { key: 'GREEN', label: 'Vert', hex: '#22c55e' },
-  { key: 'BLUE', label: 'Bleu', hex: '#3b82f6' },
-  { key: 'YELLOW', label: 'Jaune', hex: '#f59e0b' },
+  { key: 'RED', label: 'Red', hex: '#ef4444' },
+  { key: 'GREEN', label: 'Green', hex: '#22c55e' },
+  { key: 'BLUE', label: 'Blue', hex: '#3b82f6' },
+  { key: 'YELLOW', label: 'Yellow', hex: '#f59e0b' },
 ] as const
 
 function makeRound() {
@@ -63,8 +63,8 @@ export function StroopTest({ onComplete }: Props) {
     el.innerHTML = `
       <div style="width:100%;text-align:center;background:#050814;border:1px solid rgba(0,194,255,0.18);border-radius:18px;padding:24px 18px;color:#fff;box-sizing:border-box;">
         <div class="badge badge-cyan" style="margin:0 auto 14px;display:inline-block;">Stroop Test — <span data-round>1</span>/10</div>
-        <div style="font-size:13px;color:var(--grey);margin-bottom:10px;">Choisissez la <b style="color:#fff;">couleur de l'encre</b>, pas le mot.</div>
-        <div style="font-size:13px;color:var(--grey);margin-bottom:18px;">Temps restant : <b data-timer style="color:#00C2FF;">5.0s</b></div>
+        <div style="font-size:13px;color:var(--grey);margin-bottom:10px;">Choose the <b style="color:#fff;">ink color</b>, not the word.</div>
+        <div style="font-size:13px;color:var(--grey);margin-bottom:18px;">Time remaining: <b data-timer style="color:#00C2FF;">5.0s</b></div>
         <div data-stimulus style="font-size:64px;font-weight:900;letter-spacing:2px;min-height:92px;display:flex;align-items:center;justify-content:center;margin-bottom:22px;"></div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
           ${buttonsMarkup}
