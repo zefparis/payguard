@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
 
 export function useCamera() {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -12,6 +13,15 @@ export function useCamera() {
     async function start() {
       try {
         setIsInitializing(true)
+        // En natif (iOS/Android via Capacitor) on ne démarre pas la caméra via getUserMedia.
+        // La capture se fait via le plugin `@capacitor/camera` (gérée côté composant).
+        if (Capacitor.isNativePlatform()) {
+          if (!active) return
+          setReady(true)
+          setIsInitializing(false)
+          return
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: 640, height: 480 }
         })

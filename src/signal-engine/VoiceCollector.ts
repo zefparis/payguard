@@ -1,4 +1,5 @@
 import { signalBus } from './SignalBus'
+import { Capacitor } from '@capacitor/core'
 
 class VoiceCollector {
   private stream: MediaStream | null = null
@@ -7,6 +8,13 @@ class VoiceCollector {
   async start(): Promise<void> {
     if (this.recorder?.state === 'recording') {
       return
+    }
+
+    // Note: MediaRecorder fonctionne aussi dans Capacitor (WebView) dans beaucoup de cas.
+    // On garde donc l’implémentation existante. Ce branch sert surtout de point
+    // d’extension si on ajoute un plugin natif micro plus tard.
+    if (Capacitor.isNativePlatform()) {
+      // Pour l’instant: fallback identique au web
     }
 
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })

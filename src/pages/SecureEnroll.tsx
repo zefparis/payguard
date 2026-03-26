@@ -131,7 +131,7 @@ export function SecureEnroll() {
   const [behavioralProfile, setBehavioralProfile] = useState<BehavioralProfile | null>(null)
   const { recordAudio } = useVoiceBiometrics()
 
-  const [selfieB64, setSelfieB64] = useState('')
+  const [, setSelfieB64] = useState('')
   const [audioSamples, setAudioSamples] = useState<Float32Array | null>(null)
   const [cognitive, setCog] = useState<Partial<CognitiveBaseline>>({})
 
