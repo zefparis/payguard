@@ -39,7 +39,7 @@ export function Home() {
       </div>
 
       <div style={{ marginTop: 40, display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-        {['AWS Rekognition', 'ML-KEM FIPS 203', 'Air-gap ready'].map(t => (
+        {['AWS Rekognition', 'ML-KEM FIPS 203'].map(t => (
           <span key={t} className="badge badge-green">{t}</span>
         ))}
       </div>
