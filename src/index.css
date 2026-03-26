@@ -173,3 +173,57 @@ label {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.2); opacity: 0.7; }
+}
+
+/* SecureEnroll — step voice */
+.voice-recording {
+  width: 100%;
+  max-width: 320px;
+  margin: 24px auto;
+}
+
+.voice-mic {
+  font-size: 64px;
+  text-align: center;
+  margin-bottom: 16px;
+  animation: pulse 0.8s ease-in-out infinite;
+}
+
+.voice-recording-text {
+  text-align: center;
+  color: #00C2FF;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.voice-progress-outer {
+  width: 100%;
+  height: 8px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.voice-progress-inner {
+  height: 100%;
+  background: #00C2FF;
+  border-radius: 4px;
+  transition: width 0.05s linear;
+}
+
+.voice-timer {
+  text-align: center;
+  color: var(--grey);
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.voice-done {
+  text-align: center;
+  color: #00C2FF;
+  font-size: 48px;
+}

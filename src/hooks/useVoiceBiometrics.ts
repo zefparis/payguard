@@ -1,9 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
-import * as ort from 'onnxruntime-web'
-
-// NOTE: We import onnxruntime-web now so we can later plug an ECAPA-TDNN ONNX model
-// without changing call sites. The current implementation uses an MFCC-based
-// lightweight embedding for browser-only speaker verification.
+import { useCallback, useRef, useState } from 'react'
+// NOTE: This implementation uses a lightweight MFCC-based embedding.
+// We intentionally avoid importing heavy runtimes (e.g. onnxruntime-web)
+// to keep the bundle small, especially in Capacitor builds.
 
 export type VoiceEnrollResult = {
   embedding: number[]
@@ -378,9 +376,6 @@ export function useVoiceBiometrics(): UseVoiceBiometrics {
     const matched = similarity >= 0.75
     return { matched, similarity }
   }, [computeSimilarity, extractMFCC, recordAudio])
-
-  // keep ort referenced so bundlers don't tree-shake it completely
-  useMemo(() => ort.env, [])
 
   return {
     isRecording,

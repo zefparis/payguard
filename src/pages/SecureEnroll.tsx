@@ -5,11 +5,10 @@ import { ulid } from 'ulid'
 import { SelfieCapture } from '../components/SelfieCapture'
 import { StroopTest } from '../components/StroopTest'
 import { NeuralReflex } from '../components/NeuralReflex'
-import { ReactionTime } from '../components/ReactionTime'
+import { DigitSpan } from '../components/DigitSpan'
 import { BehavioralCapture } from '../components/BehavioralCapture'
 
 import type { BehavioralController, BehavioralProfile } from '../hooks/useBehavioral'
-import { useVoiceBiometrics } from '../hooks/useVoiceBiometrics'
 
 import { enrollWorker } from '../services/api'
 import { idbDeleteSession, idbGetSession, idbUpsertSession, type SecureSessionRecord } from '../services/indexedDb'
@@ -21,7 +20,7 @@ import { voiceCollector } from '../signal-engine'
 
 type State = 'INIT' | 'COLLECTE' | 'UPLOAD' | 'TERMINE' | 'ERREUR'
 
-type CollectStep = 'identity' | 'selfie' | 'stroop' | 'reflex' | 'voice' | 'audio' | 'reaction' | 'ready'
+type CollectStep = 'identity' | 'selfie' | 'stroop' | 'reflex' | 'voice' | 'digitspan' | 'ready'
 
 const PROGRESS: Record<State, number> = {
   INIT: 10,
@@ -129,12 +128,13 @@ export function SecureEnroll() {
   const [sessionId, setSessionId] = useState<string>('')
   const [session, setSession] = useState<SecureSessionRecord | null>(null)
 
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingProgress, setRecordingProgress] = useState(0)
+
   const behavioralCtrlRef = useRef<BehavioralController | null>(null)
   const [behavioralProfile, setBehavioralProfile] = useState<BehavioralProfile | null>(null)
-  const { recordAudio } = useVoiceBiometrics()
 
   const [, setSelfieB64] = useState('')
-  const [audioSamples, setAudioSamples] = useState<Float32Array | null>(null)
   const [cognitive, setCog] = useState<Partial<CognitiveBaseline>>({})
 
   const [form, setForm] = useState<IdentityFormState>({
@@ -256,86 +256,93 @@ export function SecureEnroll() {
     setCollectStep('voice')
   }
 
-  async function handleAudioCapture() {
-    try {
-      const samples = await recordAudio(2000)
-      setAudioSamples(samples)
-      setCollectStep('reaction')
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : 'Audio capture failed')
-      setState('ERREUR')
-    }
-  }
-
   async function handleVoiceEmbeddingCapture() {
     if (!sessionId) return
     setErrorMsg('')
 
+    // permission micro
+    try {
+      const testStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      testStream.getTracks().forEach(t => t.stop())
+    } catch {
+      setErrorMsg('Autorisez le microphone dans les paramètres')
+      setState('ERREUR')
+      return
+    }
+
+    setIsRecording(true)
+    setRecordingProgress(0)
+
+    // Progress bar sur 4000ms
+    const start = Date.now()
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - start
+      const pct = Math.min((elapsed / 4000) * 100, 100)
+      setRecordingProgress(pct)
+      if (pct >= 100) clearInterval(interval)
+    }, 50)
+
     try {
       await voiceCollector.start()
-      await new Promise<void>(resolve => setTimeout(resolve, 4000))
+      await new Promise<void>(r => setTimeout(r, 4000))
       await voiceCollector.stopAndCompute()
-
-      const embedding = voiceCollector.getEmbedding()
-      const quality = voiceCollector.getQuality()
-
-      const current = await idbGetSession(sessionId)
-      if (!current) return
-
-      const next: SecureSessionRecord = {
-        ...current,
-        state: 'COLLECTE',
-        // Store voice biometrics in local session (native: Preferences / web: IndexedDB)
-        cognitive_baseline: {
-          ...(current.cognitive_baseline ?? {}),
-          vocal_embedding: embedding,
-          vocal_quality: quality,
-        },
-      }
-      await idbUpsertSession(next)
-      setSession(next)
-      setCollectStep('audio')
+      clearInterval(interval)
+      setRecordingProgress(100)
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : 'Voice capture failed')
+      clearInterval(interval)
+      setErrorMsg(e instanceof Error ? e.message : 'Erreur micro')
       setState('ERREUR')
+      return
+    } finally {
+      setIsRecording(false)
     }
+
+    const embedding = voiceCollector.getEmbedding()
+    const quality = voiceCollector.getQuality()
+
+    const current = await idbGetSession(sessionId)
+    if (!current) return
+
+    const next: SecureSessionRecord = {
+      ...current,
+      state: 'COLLECTE',
+      // Store voice biometrics in local session (native: Preferences / web: IndexedDB)
+      cognitive_baseline: {
+        ...(current.cognitive_baseline ?? {}),
+        vocal_embedding: embedding,
+        vocal_quality: quality,
+      },
+    }
+    await idbUpsertSession(next)
+    setSession(next)
+    setCollectStep('digitspan')
   }
 
-  async function handleReaction(ms: number) {
-    if (!sessionId) return
+  async function handleDigitSpan(span: number) {
+    setCog(c => ({ ...c, digitSpan: span }))
+    setCollectStep('ready')
 
-    const final: CognitiveBaseline = {
-      stroopScore: cognitive.stroopScore ?? 0,
-      reflexVelocityMs: cognitive.reflexVelocityMs ?? 0,
-      vocalAccuracy: 0,
-      vocalEmbedding: undefined,
-      vocalQuality: undefined,
-      vocalSimilarityThreshold: 0.75,
-      reactionTimeMs: ms,
-    }
-    setCog(final)
-
+    // On stoppe le profil behavioral à la fin de la collecte (comme avant dans handleReaction)
     const behavioral = behavioralCtrlRef.current?.stop() ?? null
     if (behavioral) setBehavioralProfile(behavioral)
 
+    if (!sessionId) return
     const current = (await idbGetSession(sessionId))
     if (!current) return
 
     const next: SecureSessionRecord = {
       ...current,
       state: 'COLLECTE',
-      audio_samples_f32: audioSamples ? Array.from(audioSamples) : undefined,
       behavioral_profile: behavioral,
       cognitive_baseline: {
         ...(current.cognitive_baseline ?? {}),
-        stroop_score: final.stroopScore / 100,
-        reflex_velocity_ms: final.reflexVelocityMs,
-        reaction_time_ms: final.reactionTimeMs,
+        stroop_score: cognitive.stroopScore ? cognitive.stroopScore / 100 : (current.cognitive_baseline as any)?.stroop_score,
+        reflex_velocity_ms: cognitive.reflexVelocityMs ?? (current.cognitive_baseline as any)?.reflex_velocity_ms,
+        digit_span: span,
       },
     }
     await idbUpsertSession(next)
     setSession(next)
-    setCollectStep('ready')
   }
 
   async function goUpload() {
@@ -360,14 +367,20 @@ export function SecureEnroll() {
       const { publicKey: pq_public_key, privateKey } = generateSessionKeypair()
       const pq_signature = signProfile(current.cognitive_baseline ?? {}, privateKey)
 
+      // Payload cognitif cible (cognitive_baseline)
+      // - supprimer reaction_time_ms
+      // - ajouter digit_span
+      // - garder stroop_score, reflex_velocity_ms, vocal_embedding, vocal_quality
+      // - + enrichissement behavioral/pq/session_id (déjà attendu côté API)
+      const { reaction_time_ms: _rt, ...cogWithoutReaction } = (current.cognitive_baseline ?? {}) as Record<string, unknown>
+
       const cognitive_baseline = {
-        ...(current.cognitive_baseline ?? {}),
+        ...cogWithoutReaction,
+        digit_span: (cogWithoutReaction as any).digit_span ?? 0,
         behavioral: current.behavioral_profile ?? null,
         pq_public_key,
         pq_signature,
         pq_algorithm: PQ_ALGORITHM,
-        // on joint l'audio brut (optionnel côté backend pour l’instant)
-        audio_samples_f32: current.audio_samples_f32 ?? null,
         session_id: current.session_id,
       }
 
@@ -447,38 +460,51 @@ export function SecureEnroll() {
         {state === 'COLLECTE' && collectStep === 'voice' && (
           <>
             <div className="badge badge-amber">Collecte — Voix</div>
-            <h1 className="step-title">Empreinte vocale (embedding)</h1>
-            <p className="step-sub">Capture 4s et stockage local (vocal_embedding / vocal_quality).</p>
+            <h1 className="step-title">Empreinte vocale</h1>
+            <p className="step-sub">
+              Parlez normalement pendant 4 secondes.
+            </p>
 
-            <button className="btn btn-primary" onClick={handleVoiceEmbeddingCapture}>
-              Enregistrer 4s
-            </button>
-          </>
-        )}
+            {!isRecording && recordingProgress === 0 && (
+              <button className="btn btn-primary" onClick={handleVoiceEmbeddingCapture}>
+                🎤 Démarrer l'enregistrement
+              </button>
+            )}
 
-        {state === 'COLLECTE' && collectStep === 'audio' && (
-          <>
-            <div className="badge badge-amber">Collecte — Audio</div>
-            <h1 className="step-title">Empreinte vocale (audio brut)</h1>
-            <p className="step-sub">Enregistrement 2s. Stockage en local (Float32).</p>
+            {isRecording && (
+              <div className="voice-recording">
+                <div className="voice-mic">🎤</div>
 
-            <button className="btn btn-primary" onClick={handleAudioCapture}>
-              Enregistrer 2s
-            </button>
+                <p className="voice-recording-text">
+                  Enregistrement en cours...
+                </p>
 
-            {audioSamples && (
-              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--grey)' }}>
-                Audio capturé ✓ ({audioSamples.length} samples)
+                <div className="voice-progress-outer">
+                  <div
+                    className="voice-progress-inner"
+                    style={{ width: `${recordingProgress}%` }}
+                  />
+                </div>
+
+                <p className="voice-timer">
+                  {Math.round(recordingProgress / 25)}s / 4s
+                </p>
               </div>
+            )}
+
+            {recordingProgress === 100 && !isRecording && (
+              <div className="voice-done">✅</div>
             )}
           </>
         )}
 
-        {state === 'COLLECTE' && collectStep === 'reaction' && (
+        {state === 'COLLECTE' && collectStep === 'digitspan' && (
           <>
-            <div className="badge badge-amber">Collecte — Test cognitif</div>
-            <h1 className="step-title">Reaction Time</h1>
-            <ReactionTime onComplete={handleReaction} />
+            <div className="badge badge-amber">
+              Collecte — Mémoire
+            </div>
+            <h1 className="step-title">Digit Span</h1>
+            <DigitSpan onComplete={handleDigitSpan} />
           </>
         )}
 

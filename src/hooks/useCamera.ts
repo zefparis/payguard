@@ -12,6 +12,14 @@ export function useCamera() {
     async function start() {
       try {
         setIsInitializing(true)
+        // Trigger permission prompt explicitly with a simple request first
+        try {
+          const permStream = await navigator.mediaDevices.getUserMedia({ video: true })
+          permStream.getTracks().forEach(t => t.stop())
+        } catch {
+          throw new Error('Camera permission denied')
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: 640, height: 480 }
         })
@@ -30,8 +38,8 @@ export function useCamera() {
             }, 2000)
           }
         }
-      } catch {
-        setError('Camera access denied. Please allow camera in browser settings.')
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Camera access denied. Please allow camera in browser settings.')
         setIsInitializing(false)
       }
     }
