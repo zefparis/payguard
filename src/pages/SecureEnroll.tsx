@@ -17,9 +17,11 @@ import { setSecureCollectMode } from '../services/secureMode'
 import { generateSessionKeypair, PQ_ALGORITHM, signProfile } from '../services/postQuantum'
 import type { CognitiveBaseline } from '../types'
 
+import { voiceCollector } from '../signal-engine'
+
 type State = 'INIT' | 'COLLECTE' | 'UPLOAD' | 'TERMINE' | 'ERREUR'
 
-type CollectStep = 'identity' | 'selfie' | 'stroop' | 'reflex' | 'audio' | 'reaction' | 'ready'
+type CollectStep = 'identity' | 'selfie' | 'stroop' | 'reflex' | 'voice' | 'audio' | 'reaction' | 'ready'
 
 const PROGRESS: Record<State, number> = {
   INIT: 10,
@@ -251,7 +253,7 @@ export function SecureEnroll() {
 
   async function handleReflex(ms: number) {
     setCog(c => ({ ...c, reflexVelocityMs: ms }))
-    setCollectStep('audio')
+    setCollectStep('voice')
   }
 
   async function handleAudioCapture() {
@@ -261,6 +263,40 @@ export function SecureEnroll() {
       setCollectStep('reaction')
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Audio capture failed')
+      setState('ERREUR')
+    }
+  }
+
+  async function handleVoiceEmbeddingCapture() {
+    if (!sessionId) return
+    setErrorMsg('')
+
+    try {
+      await voiceCollector.start()
+      await new Promise<void>(resolve => setTimeout(resolve, 4000))
+      await voiceCollector.stopAndCompute()
+
+      const embedding = voiceCollector.getEmbedding()
+      const quality = voiceCollector.getQuality()
+
+      const current = await idbGetSession(sessionId)
+      if (!current) return
+
+      const next: SecureSessionRecord = {
+        ...current,
+        state: 'COLLECTE',
+        // Store voice biometrics in local session (native: Preferences / web: IndexedDB)
+        cognitive_baseline: {
+          ...(current.cognitive_baseline ?? {}),
+          vocal_embedding: embedding,
+          vocal_quality: quality,
+        },
+      }
+      await idbUpsertSession(next)
+      setSession(next)
+      setCollectStep('audio')
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : 'Voice capture failed')
       setState('ERREUR')
     }
   }
@@ -291,6 +327,7 @@ export function SecureEnroll() {
       audio_samples_f32: audioSamples ? Array.from(audioSamples) : undefined,
       behavioral_profile: behavioral,
       cognitive_baseline: {
+        ...(current.cognitive_baseline ?? {}),
         stroop_score: final.stroopScore / 100,
         reflex_velocity_ms: final.reflexVelocityMs,
         reaction_time_ms: final.reactionTimeMs,
@@ -404,6 +441,18 @@ export function SecureEnroll() {
             <div className="badge badge-amber">Collecte — Test cognitif</div>
             <h1 className="step-title">Neural Reflex</h1>
             <NeuralReflex onComplete={handleReflex} />
+          </>
+        )}
+
+        {state === 'COLLECTE' && collectStep === 'voice' && (
+          <>
+            <div className="badge badge-amber">Collecte — Voix</div>
+            <h1 className="step-title">Empreinte vocale (embedding)</h1>
+            <p className="step-sub">Capture 4s et stockage local (vocal_embedding / vocal_quality).</p>
+
+            <button className="btn btn-primary" onClick={handleVoiceEmbeddingCapture}>
+              Enregistrer 4s
+            </button>
           </>
         )}
 
