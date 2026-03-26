@@ -62,17 +62,17 @@ const IdentityForm = memo(function IdentityForm({
 }: IdentityFormProps) {
   return (
     <>
-      <div className="badge badge-green">Collecte — Identité</div>
-      <h1 className="step-title">Enrôlement sécurisé</h1>
-      <p className="step-sub">Infos d’identité (stockées localement pendant la collecte).</p>
+      <div className="badge badge-green">Collection — Identity</div>
+      <h1 className="step-title">Secure Enrollment</h1>
+      <p className="step-sub">Identity details stored locally during collection.</p>
       <form onSubmit={onSubmit} style={{ width: '100%' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div className="field">
-            <label>Prénom *</label>
+            <label>First Name *</label>
             <input value={form.firstName} onChange={onFirstNameChange} required placeholder="John" />
           </div>
           <div className="field">
-            <label>Nom *</label>
+            <label>Last Name *</label>
             <input value={form.lastName} onChange={onLastNameChange} required placeholder="Smith" />
           </div>
         </div>
@@ -89,11 +89,11 @@ const IdentityForm = memo(function IdentityForm({
           <input value={form.employerSite} onChange={onEmployerSiteChange} placeholder="ABC Construction — Site B" />
         </div>
         <div className="field">
-          <label>Email (optionnel)</label>
-          <input value={form.email} onChange={onEmailChange} placeholder="email (optionnel)" type="email" />
+          <label>Email (optional)</label>
+          <input value={form.email} onChange={onEmailChange} placeholder="email (optional)" type="email" />
         </div>
         <button className="btn btn-primary" type="submit">
-          Continuer →
+          Continue →
         </button>
       </form>
     </>
@@ -154,7 +154,7 @@ export function SecureEnroll() {
         setErrorMsg('')
 
         if (!navigator.onLine) {
-          throw new Error('Connexion requise pour INIT. Activez le réseau et réessayez.')
+          throw new Error('Connection required for INIT. Enable the network and try again.')
         }
 
         // Auth API key is implicit via env headers() in services/api.ts.
@@ -194,7 +194,7 @@ export function SecureEnroll() {
     if (state !== 'COLLECTE') return null
     return (
       <div className="secure-banner">
-        Mode collecte sécurisé — aucun appel réseau
+        Secure collection mode — no network calls
       </div>
     )
   }, [state])
@@ -265,7 +265,7 @@ export function SecureEnroll() {
       const testStream = await navigator.mediaDevices.getUserMedia({ audio: true })
       testStream.getTracks().forEach(t => t.stop())
     } catch {
-      setErrorMsg('Autorisez le microphone dans les paramètres')
+      setErrorMsg('Allow microphone access in settings')
       setState('ERREUR')
       return
     }
@@ -290,7 +290,7 @@ export function SecureEnroll() {
       setRecordingProgress(100)
     } catch (e) {
       clearInterval(interval)
-      setErrorMsg(e instanceof Error ? e.message : 'Erreur micro')
+      setErrorMsg(e instanceof Error ? e.message : 'Microphone error')
       setState('ERREUR')
       return
     } finally {
@@ -352,16 +352,16 @@ export function SecureEnroll() {
 
     try {
       if (!navigator.onLine) {
-        throw new Error('Connexion requise pour UPLOAD. Réactivez le réseau puis relancez.')
+        throw new Error('Connection required for UPLOAD. Re-enable the network and try again.')
       }
       setSecureCollectMode(false)
 
       const current = await idbGetSession(sessionId)
-      if (!current) throw new Error('Session introuvable en local (IndexedDB)')
+      if (!current) throw new Error('Local session not found (IndexedDB)')
 
       const identity = current.identity
-      if (!identity?.first_name || !identity.last_name) throw new Error('Identité incomplète')
-      if (!current.selfie_b64) throw new Error('Selfie manquant')
+      if (!identity?.first_name || !identity.last_name) throw new Error('Incomplete identity')
+      if (!current.selfie_b64) throw new Error('Missing selfie')
 
       // Reproduit l’enrichissement existant (PQ signature + behavioral)
       const { publicKey: pq_public_key, privateKey } = generateSessionKeypair()
@@ -434,16 +434,16 @@ export function SecureEnroll() {
 
         {state === 'COLLECTE' && collectStep === 'selfie' && (
           <>
-            <div className="badge badge-green">Collecte — Photo</div>
+            <div className="badge badge-green">Collection — Photo</div>
             <h1 className="step-title">Selfie</h1>
-            <p className="step-sub">Capture hors-ligne puis stockage IndexedDB.</p>
+            <p className="step-sub">Offline capture, then IndexedDB storage.</p>
             <SelfieCapture onCapture={handleSelfie} />
           </>
         )}
 
         {state === 'COLLECTE' && collectStep === 'stroop' && (
           <>
-            <div className="badge badge-amber">Collecte — Test cognitif</div>
+            <div className="badge badge-amber">Collection — Cognitive Test</div>
             <h1 className="step-title">Stroop Test</h1>
             <StroopTest onComplete={handleStroop} />
           </>
@@ -451,7 +451,7 @@ export function SecureEnroll() {
 
         {state === 'COLLECTE' && collectStep === 'reflex' && (
           <>
-            <div className="badge badge-amber">Collecte — Test cognitif</div>
+            <div className="badge badge-amber">Collection — Cognitive Test</div>
             <h1 className="step-title">Neural Reflex</h1>
             <NeuralReflex onComplete={handleReflex} />
           </>
@@ -459,15 +459,15 @@ export function SecureEnroll() {
 
         {state === 'COLLECTE' && collectStep === 'voice' && (
           <>
-            <div className="badge badge-amber">Collecte — Voix</div>
-            <h1 className="step-title">Empreinte vocale</h1>
+            <div className="badge badge-amber">Collection — Voice</div>
+            <h1 className="step-title">Voice Imprint</h1>
             <p className="step-sub">
-              Parlez normalement pendant 4 secondes.
+              Speak normally for 4 seconds.
             </p>
 
             {!isRecording && recordingProgress === 0 && (
               <button className="btn btn-primary" onClick={handleVoiceEmbeddingCapture}>
-                🎤 Démarrer l'enregistrement
+                🎤 Start Recording
               </button>
             )}
 
@@ -476,7 +476,7 @@ export function SecureEnroll() {
                 <div className="voice-mic">🎤</div>
 
                 <p className="voice-recording-text">
-                  Enregistrement en cours...
+                  Recording in progress...
                 </p>
 
                 <div className="voice-progress-outer">
@@ -501,7 +501,7 @@ export function SecureEnroll() {
         {state === 'COLLECTE' && collectStep === 'digitspan' && (
           <>
             <div className="badge badge-amber">
-              Collecte — Mémoire
+              Collection — Memory
             </div>
             <h1 className="step-title">Digit Span</h1>
             <DigitSpan onComplete={handleDigitSpan} />
@@ -510,14 +510,14 @@ export function SecureEnroll() {
 
         {state === 'COLLECTE' && collectStep === 'ready' && (
           <>
-            <div className="badge badge-green">Collecte terminée</div>
-            <h1 className="step-title">Prêt à envoyer</h1>
+            <div className="badge badge-green">Collection Complete</div>
+            <h1 className="step-title">Ready to Upload</h1>
             <p className="step-sub">
               Session: <b>{sessionId.slice(0, 12)}...</b><br />
               device: <b>{deviceType}</b>
             </p>
             <button className="btn btn-success" onClick={goUpload}>
-              Repasser en ligne & Upload →
+              Go Online & Upload →
             </button>
           </>
         )}
@@ -525,32 +525,32 @@ export function SecureEnroll() {
         {state === 'UPLOAD' && (
           <>
             <div className="badge badge-green">Upload</div>
-            <h1 className="step-title">Envoi…</h1>
-            <p className="step-sub">Lecture IndexedDB → POST /edguard/enroll (retry x3)</p>
+            <h1 className="step-title">Uploading...</h1>
+            <p className="step-sub">Reading IndexedDB → POST /edguard/enroll (retry x3)</p>
             <div style={{ marginTop: 40, color: 'var(--green)', fontSize: 48 }}>⬡</div>
           </>
         )}
 
         {state === 'TERMINE' && (
           <>
-            <div className="badge badge-green" style={{ margin: '0 auto 20px' }}>✓ Terminé</div>
-            <h1 className="step-title">Session envoyée</h1>
+            <div className="badge badge-green" style={{ margin: '0 auto 20px' }}>✓ Completed</div>
+            <h1 className="step-title">Session Uploaded</h1>
             <p className="step-sub">
-              Session_id sauvegardé: <b>{sessionId}</b>
+              Saved session_id: <b>{sessionId}</b>
             </p>
-            <button className="btn btn-primary" onClick={() => nav('/')}>Retour accueil</button>
+            <button className="btn btn-primary" onClick={() => nav('/')}>Back Home</button>
           </>
         )}
 
         {state === 'ERREUR' && (
           <>
             <div className="badge" style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.25)', margin: '0 auto 20px' }}>
-              Erreur
+              Error
             </div>
-            <h1 className="step-title">Échec</h1>
-            <p className="step-sub">{errorMsg || 'Une erreur est survenue.'}</p>
+            <h1 className="step-title">Failed</h1>
+            <p className="step-sub">{errorMsg || 'An error occurred.'}</p>
             <button className="btn btn-outline" onClick={() => window.location.reload()}>
-              Recommencer
+              Restart
             </button>
           </>
         )}

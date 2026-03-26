@@ -34,7 +34,7 @@ export async function enrollWorker(payload: {
   }
 }): Promise<{ success: boolean; student_id: string; confidence: number }> {
   if (isSecureCollectMode()) {
-    throw new Error('Mode collecte sécurisé actif: upload bloqué (repassez en ligne pour envoyer).')
+    throw new Error('Secure collection mode is active: upload blocked (go back online to send).')
   }
   const res = await fetch(`${API}/edguard/enroll`, {
     method: 'POST',
@@ -51,7 +51,7 @@ export async function verifyWorker(payload: {
   last_name: string
 }): Promise<{ verified: boolean; similarity: number; student_id: string; first_name: string }> {
   if (isSecureCollectMode()) {
-    throw new Error('Mode collecte sécurisé actif: vérification bloquée (repassez en ligne).')
+    throw new Error('Secure collection mode is active: verification blocked (go back online).')
   }
   const res = await fetch(`${API}/edguard/verify`, {
     method: 'POST',

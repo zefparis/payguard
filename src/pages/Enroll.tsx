@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { SelfieCapture } from '../components/SelfieCapture'
 import { StroopTest } from '../components/StroopTest'
 import { NeuralReflex } from '../components/NeuralReflex'
+import { DigitSpan } from '../components/DigitSpan'
 import { VocalImprint } from '../components/VocalImprint'
-import { ReactionTime } from '../components/ReactionTime'
 import { BehavioralCapture } from '../components/BehavioralCapture'
 import type { BehavioralController, BehavioralProfile } from '../hooks/useBehavioral'
 import { usePayGuardStore } from '../store/payguardStore'
@@ -13,10 +13,10 @@ import { generateSessionKeypair, PQ_ALGORITHM, signProfile } from '../services/p
 import { behavioralCollector, faceCollector, signalBus } from '../signal-engine'
 import type { CognitiveBaseline } from '../types'
 
-type Step = 'identity' | 'selfie' | 'stroop' | 'reflex' | 'vocal' | 'reaction' | 'submitting' | 'success' | 'error'
+type Step = 'identity' | 'selfie' | 'stroop' | 'reflex' | 'vocal' | 'digitspan' | 'submitting' | 'success' | 'error'
 
 const PROGRESS: Record<Step, number> = {
-  identity:10, selfie:25, stroop:45, reflex:60, vocal:75, reaction:88, submitting:95, success:100, error:0
+  identity:10, selfie:25, stroop:45, reflex:60, vocal:75, digitspan:88, submitting:95, success:100, error:0
 }
 
 type IdentityFormState = {
@@ -124,6 +124,7 @@ export function Enroll() {
   const [behavioralProfile, setBehavioralProfile] = useState<BehavioralProfile | null>(null)
   const [pqPublicKey, setPqPublicKey] = useState<string | null>(null)
   const [pqSignature, setPqSignature] = useState<string | null>(null)
+  const digitSpanRef = useRef(0)
 
   const deviceType = useMemo(() => behavioralProfile?.device.device_type ?? 'unknown', [behavioralProfile])
 
@@ -189,22 +190,32 @@ export function Enroll() {
       vocalQuality: result.quality,
       vocalSimilarityThreshold: result.threshold,
     }))
-    setStep('reaction')
+    setStep('digitspan')
+  }
+
+  function setDigitSpan(span: number) {
+    digitSpanRef.current = span
+    setCog(c => ({ ...c, digitSpan: span }))
+  }
+
+  function goNextStep() {
+    void submitEnrollment(digitSpanRef.current)
   }
 
   const onBehavioralController = useCallback((controller: BehavioralController) => {
     behavioralCtrlRef.current = controller
   }, [])
 
-  async function handleReaction(ms: number) {
+  async function submitEnrollment(span: number) {
     const final: CognitiveBaseline = {
       stroopScore: cognitive.stroopScore ?? 0,
       reflexVelocityMs: cognitive.reflexVelocityMs ?? 0,
+      digitSpan: span,
       vocalAccuracy: cognitive.vocalAccuracy ?? 0,
       vocalEmbedding: cognitive.vocalEmbedding,
       vocalQuality: cognitive.vocalQuality,
       vocalSimilarityThreshold: cognitive.vocalSimilarityThreshold ?? 0.75,
-      reactionTimeMs: ms,
+      reactionTimeMs: 0,
     }
     setCog(final)
     setStep('submitting')
@@ -217,8 +228,8 @@ export function Enroll() {
       const cognitiveBaseline = {
         stroop_score: final.stroopScore / 100,
         reflex_velocity_ms: final.reflexVelocityMs,
+        digit_span: final.digitSpan ?? 0,
         vocal_accuracy: final.vocalAccuracy / 100,
-        reaction_time_ms: final.reactionTimeMs,
         // New voice biometrics payload (stored in Supabase)
         // -- ALTER TABLE edguard_enrollments
         // -- ADD COLUMN IF NOT EXISTS vocal_embedding JSONB;
@@ -247,10 +258,10 @@ export function Enroll() {
       }
 
       const res = await enrollWorker({
-        selfie_b64: selfieB64,
         first_name: form.firstName,
         last_name: form.lastName,
-        email: form.email || `${form.firstName}.${form.lastName}@payguard.local`,
+        email: form.email || '',
+        selfie_b64: selfieB64,
         tenant_id: import.meta.env.VITE_TENANT_ID,
         cognitive_baseline: payloadBaseline,
       })
@@ -268,7 +279,14 @@ export function Enroll() {
       })
       setSelfie(selfieB64)
       setCognitive(final)
-      setStep('success')
+      nav('/results', {
+        state: {
+          faceScore: res.confidence,
+          reflexMs: final.reflexVelocityMs,
+          digitSpan: final.digitSpan ?? 0,
+          voiceScore: final.vocalAccuracy,
+        },
+      })
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Enrollment failed')
       setStep('error')
@@ -330,11 +348,14 @@ export function Enroll() {
         </>
         )}
 
-        {step === 'reaction' && (
+        {step === 'digitspan' && (
         <>
           <div className="badge badge-amber">Step 6 of 6 — Cognitive</div>
-          <h1 className="step-title">Reaction Time</h1>
-          <ReactionTime onComplete={handleReaction} />
+          <h1 className="step-title">Digit Span</h1>
+          <DigitSpan onComplete={(span) => {
+            setDigitSpan(span)
+            goNextStep()
+          }} />
         </>
         )}
 
@@ -382,8 +403,8 @@ export function Enroll() {
               <span className="metric-value">{cognitive.reflexVelocityMs}ms</span>
             </div>
             <div className="metric-row">
-              <span className="metric-label">Reaction time</span>
-              <span className="metric-value">{cognitive.reactionTimeMs}ms</span>
+              <span className="metric-label">Digit span</span>
+              <span className="metric-value">{cognitive.digitSpan ?? 0}</span>
             </div>
 
             <div className="metric-row">

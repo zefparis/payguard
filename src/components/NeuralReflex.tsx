@@ -108,7 +108,7 @@ export function NeuralReflex({ onComplete }: Props) {
       cancelAnimationFrame(rafId)
       const avg = Math.round(times.reduce((sum, value) => sum + value, 0) / times.length)
       renderFeedback(`${avg} ms`, '#00FF00')
-      subtitleEl.textContent = 'Test terminé'
+      subtitleEl.textContent = 'Test complete'
       const complete = (window as any).__reflexComplete as ((value: number) => void) | undefined
       complete?.(avg)
     }

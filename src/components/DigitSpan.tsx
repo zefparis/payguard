@@ -26,13 +26,16 @@ export function DigitSpan({ onComplete }: Props) {
     el.innerHTML = `
       <div style="width:100%;background:#060a12;border:1px solid rgba(0,194,255,0.18);border-radius:18px;padding:24px 18px;color:#fff;box-sizing:border-box;">
         <div class="badge badge-cyan" style="margin:0 auto 16px;display:inline-block;">Digit Span — Round <span data-round>1</span>/3</div>
-        <div data-phase-label style="font-size:13px;color:var(--grey);text-align:center;margin-bottom:12px;">Mémorise la séquence.</div>
-        <div data-sequence style="font-size:64px;font-weight:900;letter-spacing:8px;color:#00C2FF;text-align:center;min-height:92px;display:flex;align-items:center;justify-content:center;"></div>
-        <div data-timer style="font-size:13px;color:var(--grey);text-align:center;margin-top:8px;">Compte à rebours : <b style="color:#fff;">2.0s</b></div>
+        <div data-phase-label style="font-size:13px;color:var(--grey);text-align:center;margin-bottom:12px;">Memorize the sequence.</div>
+        <div data-sequence style="font-size:64px;font-weight:900;letter-spacing:8px;color:#00C2FF;text-align:center;min-height:92px;display:flex;align-items:center;justify-content:center;font-family:Syne,system-ui,sans-serif;"></div>
+        <div data-timer style="font-size:13px;color:var(--grey);text-align:center;margin-top:8px;">Countdown: <b style="color:#fff;">2.0s</b></div>
+        <div data-progress-track style="width:100%;max-width:440px;height:10px;margin:12px auto 0;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden;">
+          <div data-progress-fill style="width:100%;height:100%;background:linear-gradient(90deg,#00C2FF,#38bdf8);border-radius:999px;"></div>
+        </div>
         <div data-input-wrap style="display:none;margin-top:18px;">
-          <div style="width:100%;max-width:440px;margin:0 auto 14px;background:#0d1320;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 14px;text-align:center;">
-            <span style="color:var(--grey);font-size:13px;">Saisie :</span>
-            <b data-input style="display:block;margin-top:6px;letter-spacing:8px;color:#fff;font-size:28px;min-height:34px;">••••</b>
+          <div style="width:100%;max-width:440px;margin:0 auto 14px;background:#0d1320;border:1px solid rgba(0,194,255,0.12);border-radius:12px;padding:12px 14px;text-align:center;">
+            <span style="color:var(--grey);font-size:13px;">Input:</span>
+            <b data-input style="display:block;margin-top:6px;letter-spacing:8px;color:#00C2FF;font-size:28px;min-height:34px;font-family:Syne,system-ui,sans-serif;">••••</b>
           </div>
           <div data-grid style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;max-width:440px;margin:0 auto;"></div>
         </div>
@@ -43,11 +46,13 @@ export function DigitSpan({ onComplete }: Props) {
     const phaseLabelEl = el.querySelector('[data-phase-label]') as HTMLDivElement | null
     const sequenceEl = el.querySelector('[data-sequence]') as HTMLDivElement | null
     const timerEl = el.querySelector('[data-timer]') as HTMLDivElement | null
+    const progressTrackEl = el.querySelector('[data-progress-track]') as HTMLDivElement | null
+    const progressFillEl = el.querySelector('[data-progress-fill]') as HTMLDivElement | null
     const inputWrapEl = el.querySelector('[data-input-wrap]') as HTMLDivElement | null
     const inputEl = el.querySelector('[data-input]') as HTMLDivElement | null
     const gridEl = el.querySelector('[data-grid]') as HTMLDivElement | null
 
-    if (!roundEl || !phaseLabelEl || !sequenceEl || !timerEl || !inputWrapEl || !inputEl || !gridEl) {
+    if (!roundEl || !phaseLabelEl || !sequenceEl || !timerEl || !progressTrackEl || !progressFillEl || !inputWrapEl || !inputEl || !gridEl) {
       return () => {
         delete (window as any).__digitSpanComplete
         el.innerHTML = ''
@@ -99,10 +104,12 @@ export function DigitSpan({ onComplete }: Props) {
     const renderRepeat = () => {
       const roundLen = rounds[roundIdx] ?? 4
       roundEl.textContent = String(roundIdx + 1)
-      phaseLabelEl.textContent = 'Répète la séquence avec le pavé numérique.'
+      phaseLabelEl.textContent = 'Repeat the sequence using the keypad.'
       sequenceEl.textContent = '•'.repeat(roundLen)
       sequenceEl.style.color = '#223042'
+      sequenceEl.style.fontFamily = 'Syne,system-ui,sans-serif'
       timerEl.style.display = 'none'
+      progressTrackEl.style.display = 'none'
       inputWrapEl.style.display = 'block'
       renderInput()
       setButtonsDisabled(false)
@@ -110,12 +117,15 @@ export function DigitSpan({ onComplete }: Props) {
 
     const renderMemorise = () => {
       roundEl.textContent = String(roundIdx + 1)
-      phaseLabelEl.textContent = 'Mémorise la séquence.'
+      phaseLabelEl.textContent = 'Memorize the sequence.'
       sequenceEl.textContent = sequence
       sequenceEl.style.color = '#00C2FF'
+      sequenceEl.style.fontFamily = 'Syne,system-ui,sans-serif'
       timerEl.style.display = 'block'
+      progressTrackEl.style.display = 'block'
       inputWrapEl.style.display = 'none'
-      timerEl.innerHTML = 'Compte à rebours : <b style="color:#fff;">2.0s</b>'
+      timerEl.innerHTML = 'Countdown: <b style="color:#fff;">2.0s</b>'
+      progressFillEl.style.width = '100%'
     }
 
     // Countdown MEMORISE (2s)
@@ -125,7 +135,8 @@ export function DigitSpan({ onComplete }: Props) {
       }
 
       const remaining = Math.max(0, 2000 - (now - memoryStartedAt))
-      timerEl.innerHTML = `Compte à rebours : <b style="color:#fff;">${(remaining / 1000).toFixed(1)}s</b>`
+      timerEl.innerHTML = `Countdown: <b style="color:#fff;">${(remaining / 1000).toFixed(1)}s</b>`
+      progressFillEl.style.width = `${(remaining / 2000) * 100}%`
 
       if (remaining <= 0) {
         phase = 'REPETE'
@@ -197,12 +208,14 @@ export function DigitSpan({ onComplete }: Props) {
           style="
             height: 56px;
             border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.08);
-            background: #0d1320;
+            border: 1px solid rgba(0,194,255,0.125);
+            background: #1a2332;
             color: #fff;
             font-size: 20px;
             font-weight: 800;
             cursor: pointer;
+            min-height: 64px;
+            -webkit-tap-highlight-color: transparent;
           "
         >
           ${digit}
