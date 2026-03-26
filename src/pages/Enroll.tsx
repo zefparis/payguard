@@ -4,19 +4,153 @@ import { SelfieCapture } from '../components/SelfieCapture'
 import { StroopTest } from '../components/StroopTest'
 import { NeuralReflex } from '../components/NeuralReflex'
 import { DigitSpan } from '../components/DigitSpan'
-import { VocalImprint } from '../components/VocalImprint'
 import { BehavioralCapture } from '../components/BehavioralCapture'
-import type { BehavioralController, BehavioralProfile } from '../hooks/useBehavioral'
+import type { BehavioralController } from '../hooks/useBehavioral'
+import { useVoiceBiometrics } from '../hooks/useVoiceBiometrics'
 import { usePayGuardStore } from '../store/payguardStore'
 import { enrollWorker } from '../services/api'
 import { generateSessionKeypair, PQ_ALGORITHM, signProfile } from '../services/postQuantum'
 import { behavioralCollector, faceCollector, signalBus } from '../signal-engine'
 import type { CognitiveBaseline } from '../types'
 
-type Step = 'identity' | 'selfie' | 'stroop' | 'reflex' | 'vocal' | 'digitspan' | 'submitting' | 'success' | 'error'
+type Step = 'identity' | 'selfie' | 'stroop' | 'reflex' | 'voice' | 'digitspan' | 'uploading' | 'error'
 
 const PROGRESS: Record<Step, number> = {
-  identity:10, selfie:25, stroop:45, reflex:60, vocal:75, digitspan:88, submitting:95, success:100, error:0
+  identity: 10,
+  selfie: 25,
+  stroop: 45,
+  reflex: 60,
+  voice: 75,
+  digitspan: 90,
+  uploading: 96,
+  error: 0,
+}
+
+type CollectedEnrollment = {
+  firstName: string
+  lastName: string
+  employeeId: string
+  jobRole: string
+  employerSite: string
+  email: string
+  selfieB64: string
+  stroopScore: number
+  reflexMs: number
+  voiceBlob: Blob | null
+  voiceSamples: Float32Array | null
+  digitSpan: number
+}
+
+const INITIAL_COLLECTED: CollectedEnrollment = {
+  firstName: '',
+  lastName: '',
+  employeeId: '',
+  jobRole: '',
+  employerSite: '',
+  email: '',
+  selfieB64: '',
+  stroopScore: 0,
+  reflexMs: 0,
+  voiceBlob: null,
+  voiceSamples: null,
+  digitSpan: 0,
+}
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value))
+}
+
+function rms(arr: Float32Array) {
+  let sum = 0
+  for (let i = 0; i < arr.length; i += 1) {
+    sum += arr[i] * arr[i]
+  }
+  return arr.length ? Math.sqrt(sum / arr.length) : 0
+}
+
+function toMonoFloat32(audioBuffer: AudioBuffer) {
+  if (audioBuffer.numberOfChannels === 1) {
+    return audioBuffer.getChannelData(0)
+  }
+
+  const left = audioBuffer.getChannelData(0)
+  const right = audioBuffer.getChannelData(1)
+  const out = new Float32Array(audioBuffer.length)
+
+  for (let i = 0; i < out.length; i += 1) {
+    out[i] = (left[i] + right[i]) * 0.5
+  }
+
+  return out
+}
+
+function resampleLinear(input: Float32Array, inputRate: number, outputRate: number) {
+  if (inputRate === outputRate) {
+    return input
+  }
+
+  const ratio = outputRate / inputRate
+  const outLen = Math.max(1, Math.floor(input.length * ratio))
+  const out = new Float32Array(outLen)
+
+  for (let i = 0; i < outLen; i += 1) {
+    const t = i / ratio
+    const i0 = Math.floor(t)
+    const i1 = Math.min(input.length - 1, i0 + 1)
+    const frac = t - i0
+    out[i] = input[i0] * (1 - frac) + input[i1] * frac
+  }
+
+  return out
+}
+
+async function recordVoiceCapture(durationMs: number, onProgress: (progress: number) => void) {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : 'audio/webm'
+  const recorder = new MediaRecorder(stream, { mimeType })
+  const chunks: BlobPart[] = []
+
+  recorder.ondataavailable = (event) => {
+    if (event.data.size > 0) {
+      chunks.push(event.data)
+    }
+  }
+
+  let progressTimer = 0
+
+  try {
+    onProgress(0)
+    const startedAt = performance.now()
+    progressTimer = window.setInterval(() => {
+      const elapsed = performance.now() - startedAt
+      onProgress(Math.min(100, Math.round((elapsed / durationMs) * 100)))
+    }, 50)
+
+    recorder.start()
+    await new Promise<void>(resolve => setTimeout(resolve, durationMs))
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      recorder.onerror = () => reject(new Error('Microphone recording failed'))
+      recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }))
+      recorder.stop()
+    })
+
+    onProgress(100)
+
+    const arrayBuffer = await blob.arrayBuffer()
+    const audioCtx = new AudioContext()
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0))
+    const mono = toMonoFloat32(audioBuffer)
+    const samples = resampleLinear(mono, audioBuffer.sampleRate, 16000)
+    await audioCtx.close()
+
+    return { blob, samples }
+  } finally {
+    window.clearInterval(progressTimer)
+    stream.getTracks().forEach(track => track.stop())
+  }
 }
 
 type IdentityFormState = {
@@ -92,48 +226,46 @@ const IdentityForm = memo(function IdentityForm({
 export function Enroll() {
   const nav = useNavigate()
   const { setWorker, setSelfie, setCognitive } = usePayGuardStore()
+  const { extractMFCC } = useVoiceBiometrics()
+  const behavioralCtrlRef = useRef<BehavioralController | null>(null)
+
+  const [step, setStep] = useState<Step>('identity')
+  const [form, setForm] = useState<IdentityFormState>({
+    firstName: '',
+    lastName: '',
+    employeeId: '',
+    jobRole: '',
+    employerSite: '',
+    email: '',
+  })
+  const [collected, setCollected] = useState<CollectedEnrollment>(INITIAL_COLLECTED)
+  const [errorMsg, setErrorMsg] = useState('')
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false)
+  const [voiceProgress, setVoiceProgress] = useState(0)
+  const [voiceCountdownMs, setVoiceCountdownMs] = useState(4000)
+
+  const isCollectPhase = useMemo(
+    () => ['identity', 'selfie', 'stroop', 'reflex', 'voice', 'digitspan'].includes(step),
+    [step],
+  )
 
   useEffect(() => {
     behavioralCollector.start()
 
     return () => {
       behavioralCollector.stop()
+      signalBus.resume()
     }
   }, [])
 
-  const [step, setStep] = useState<Step>('identity')
-  const [selfieB64, setSelfieB64] = useState('')
-  const [cognitive, setCog] = useState<Partial<CognitiveBaseline>>({})
-  const [errorMsg, setErrorMsg] = useState('')
-  const [workerId, setWorkerId] = useState('')
-  const [confidence, setConf] = useState(0)
-
   useEffect(() => {
-    if (step === 'selfie') {
+    if (isCollectPhase) {
       signalBus.pause()
-
-      return () => {
-        signalBus.resume()
-      }
+      return
     }
 
     signalBus.resume()
-  }, [step])
-
-  const behavioralCtrlRef = useRef<BehavioralController | null>(null)
-  const [behavioralProfile, setBehavioralProfile] = useState<BehavioralProfile | null>(null)
-  const [pqPublicKey, setPqPublicKey] = useState<string | null>(null)
-  const [pqSignature, setPqSignature] = useState<string | null>(null)
-  const digitSpanRef = useRef(0)
-
-  const deviceType = useMemo(() => behavioralProfile?.device.device_type ?? 'unknown', [behavioralProfile])
-
-  const behavioralCaptured = useMemo(() => Boolean(behavioralProfile), [behavioralProfile])
-  const pqCaptured = useMemo(() => Boolean(pqPublicKey && pqSignature), [pqPublicKey, pqSignature])
-
-  const [form, setForm] = useState<IdentityFormState>({
-    firstName: '', lastName: '', employeeId: '', jobRole: '', employerSite: '', email: ''
-  })
+  }, [isCollectPhase])
 
   const handleFirstNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     setForm(f => ({ ...f, firstName: e.target.value }))
@@ -159,96 +291,126 @@ export function Enroll() {
     setForm(f => ({ ...f, email: e.target.value }))
   }, [])
 
+  const resetEnrollment = useCallback(() => {
+    setErrorMsg('')
+    setVoiceProgress(0)
+    setVoiceCountdownMs(4000)
+    setIsVoiceRecording(false)
+    setCollected(INITIAL_COLLECTED)
+    setForm({
+      firstName: '',
+      lastName: '',
+      employeeId: '',
+      jobRole: '',
+      employerSite: '',
+      email: '',
+    })
+    setStep('identity')
+  }, [])
+
   const handleIdentity = useCallback((e: FormEvent) => {
     e.preventDefault()
-    if (!form.firstName || !form.lastName) return
-    setStep('selfie')
-  }, [form.firstName, form.lastName])
 
-  function handleSelfie(b64: string) {
-    faceCollector.capture(b64)
-    setSelfieB64(b64)
-    setTimeout(() => setStep('stroop'), 600)
-  }
+    if (!form.firstName || !form.lastName) {
+      return
+    }
 
-  function handleStroop(score: number) {
-    setCog(c => ({ ...c, stroopScore: score }))
-    setStep('reflex')
-  }
-
-  function handleReflex(ms: number) {
-    setCog(c => ({ ...c, reflexVelocityMs: ms }))
-    setStep('vocal')
-  }
-
-  function handleVocal(result: { embedding: number[]; quality: number; threshold: number }) {
-    // Store voice biometrics locally
-    setCog(c => ({
-      ...c,
-      vocalAccuracy: Math.round(result.quality * 100),
-      vocalEmbedding: result.embedding,
-      vocalQuality: result.quality,
-      vocalSimilarityThreshold: result.threshold,
+    setCollected(current => ({
+      ...current,
+      firstName: form.firstName,
+      lastName: form.lastName,
+      employeeId: form.employeeId,
+      jobRole: form.jobRole,
+      employerSite: form.employerSite,
+      email: form.email,
     }))
-    setStep('digitspan')
-  }
+    setStep('selfie')
+  }, [form])
 
-  function setDigitSpan(span: number) {
-    digitSpanRef.current = span
-    setCog(c => ({ ...c, digitSpan: span }))
-  }
+  const handleSelfie = useCallback((b64: string) => {
+    faceCollector.capture(b64)
+    setCollected(current => ({ ...current, selfieB64: b64 }))
+    window.setTimeout(() => setStep('stroop'), 400)
+  }, [])
 
-  function goNextStep() {
-    void submitEnrollment(digitSpanRef.current)
-  }
+  const handleStroop = useCallback((score: number) => {
+    setCollected(current => ({ ...current, stroopScore: score }))
+    setStep('reflex')
+  }, [])
+
+  const handleReflex = useCallback((ms: number) => {
+    setCollected(current => ({ ...current, reflexMs: ms }))
+    setStep('voice')
+  }, [])
+
+  const handleVoiceCapture = useCallback(async () => {
+    setErrorMsg('')
+    setIsVoiceRecording(true)
+    setVoiceProgress(0)
+    setVoiceCountdownMs(4000)
+
+    try {
+      const capture = await recordVoiceCapture(4000, (progress) => {
+        setVoiceProgress(progress)
+        setVoiceCountdownMs(Math.max(0, 4000 - Math.round((progress / 100) * 4000)))
+      })
+
+      setCollected(current => ({
+        ...current,
+        voiceBlob: capture.blob,
+        voiceSamples: capture.samples,
+      }))
+      setStep('digitspan')
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Voice capture failed')
+      setStep('error')
+    } finally {
+      setIsVoiceRecording(false)
+    }
+  }, [])
 
   const onBehavioralController = useCallback((controller: BehavioralController) => {
     behavioralCtrlRef.current = controller
   }, [])
 
-  async function submitEnrollment(span: number) {
-    const final: CognitiveBaseline = {
-      stroopScore: cognitive.stroopScore ?? 0,
-      reflexVelocityMs: cognitive.reflexVelocityMs ?? 0,
-      digitSpan: span,
-      vocalAccuracy: cognitive.vocalAccuracy ?? 0,
-      vocalEmbedding: cognitive.vocalEmbedding,
-      vocalQuality: cognitive.vocalQuality,
-      vocalSimilarityThreshold: cognitive.vocalSimilarityThreshold ?? 0.75,
-      reactionTimeMs: 0,
-    }
-    setCog(final)
-    setStep('submitting')
+  const uploadEnrollment = useCallback(async (data: CollectedEnrollment) => {
+    setStep('uploading')
+    signalBus.resume()
 
     try {
-      // Stop behavioral capture and finalize profile right before submit
-      const behavioral = behavioralCtrlRef.current?.stop()
-      if (behavioral) setBehavioralProfile(behavioral)
+      if (!data.firstName || !data.lastName) throw new Error('Missing identity information')
+      if (!data.selfieB64) throw new Error('Missing face scan')
+      if (!data.voiceBlob || !data.voiceSamples) throw new Error('Missing voice recording')
+
+      const behavioral = behavioralCtrlRef.current?.stop() ?? null
+      const vocalEmbedding = Array.from(extractMFCC(data.voiceSamples, 16000))
+      const vocalQuality = clamp01((rms(data.voiceSamples) - 0.01) / 0.1)
+      const vocalAccuracy = Math.round(vocalQuality * 100)
+
+      const final: CognitiveBaseline = {
+        stroopScore: data.stroopScore,
+        reflexVelocityMs: data.reflexMs,
+        digitSpan: data.digitSpan,
+        vocalAccuracy,
+        vocalEmbedding,
+        vocalQuality,
+        vocalSimilarityThreshold: 0.75,
+        reactionTimeMs: 0,
+      }
 
       const cognitiveBaseline = {
         stroop_score: final.stroopScore / 100,
         reflex_velocity_ms: final.reflexVelocityMs,
         digit_span: final.digitSpan ?? 0,
         vocal_accuracy: final.vocalAccuracy / 100,
-        // New voice biometrics payload (stored in Supabase)
-        // -- ALTER TABLE edguard_enrollments
-        // -- ADD COLUMN IF NOT EXISTS vocal_embedding JSONB;
-        // -- ADD COLUMN IF NOT EXISTS vocal_quality FLOAT;
         vocal_embedding: final.vocalEmbedding,
         vocal_quality: final.vocalQuality,
         vocal_similarity_threshold: final.vocalSimilarityThreshold,
-        // New behavioral + post-quantum layers
-        // -- ALTER TABLE edguard_enrollments
-        // -- ADD COLUMN IF NOT EXISTS behavioral_profile JSONB;
-        // -- ADD COLUMN IF NOT EXISTS pq_public_key TEXT;
-        // -- ADD COLUMN IF NOT EXISTS pq_signature TEXT;
         behavioral,
       }
 
       const { publicKey: pq_public_key, privateKey } = generateSessionKeypair()
       const pq_signature = signProfile(cognitiveBaseline, privateKey)
-      setPqPublicKey(pq_public_key)
-      setPqSignature(pq_signature)
 
       const payloadBaseline = {
         ...cognitiveBaseline,
@@ -257,28 +419,29 @@ export function Enroll() {
         pq_algorithm: PQ_ALGORITHM,
       }
 
+      const tenantId = import.meta.env.VITE_TENANT_ID
       const res = await enrollWorker({
-        first_name: form.firstName,
-        last_name: form.lastName,
-        email: form.email || '',
-        selfie_b64: selfieB64,
-        tenant_id: import.meta.env.VITE_TENANT_ID,
+        first_name: data.firstName,
+        last_name: data.lastName,
+        email: data.email || '',
+        selfie_b64: data.selfieB64,
+        tenant_id: tenantId,
         cognitive_baseline: payloadBaseline,
       })
-      setWorkerId(res.student_id)
-      setConf(Math.round(res.confidence))
+
       setWorker({
         workerId: res.student_id,
-        firstName: form.firstName,
-        lastName: form.lastName,
-        employeeId: form.employeeId,
-        jobRole: form.jobRole,
-        employerSite: form.employerSite,
-        tenantId: import.meta.env.VITE_TENANT_ID,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        employeeId: data.employeeId,
+        jobRole: data.jobRole,
+        employerSite: data.employerSite,
+        tenantId,
         cognitiveBaseline: final,
       })
-      setSelfie(selfieB64)
+      setSelfie(data.selfieB64)
       setCognitive(final)
+
       nav('/results', {
         state: {
           faceScore: res.confidence,
@@ -288,13 +451,23 @@ export function Enroll() {
         },
       })
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Enrollment failed')
+      setErrorMsg(err instanceof Error ? err.message : 'Enrollment upload failed')
       setStep('error')
     }
-  }
+  }, [extractMFCC, nav, setCognitive, setSelfie, setWorker])
+
+  const handleDigitSpan = useCallback((span: number) => {
+    const finalCollected: CollectedEnrollment = {
+      ...collected,
+      digitSpan: span,
+    }
+
+    setCollected(finalCollected)
+    void uploadEnrollment(finalCollected)
+  }, [collected, uploadEnrollment])
 
   return (
-    <BehavioralCapture enabled={step !== 'identity'} onController={onBehavioralController}>
+    <BehavioralCapture enabled={isCollectPhase} onController={onBehavioralController}>
       <div className="page">
         <div className="logo" style={{ cursor: 'pointer' }} onClick={() => nav('/')}>← PAYGUARD</div>
 
@@ -316,122 +489,80 @@ export function Enroll() {
         )}
 
         {step === 'selfie' && (
-        <>
-          <div className="badge badge-green">Step 2 of 6 — Biometric</div>
-          <h1 className="step-title">Face Registration</h1>
-          <p className="step-sub">Look directly at the camera. Ensure good lighting.</p>
-          <SelfieCapture onCapture={handleSelfie} />
-        </>
+          <>
+            <div className="badge badge-green">Step 2 of 6 — Face Scan</div>
+            <h1 className="step-title">Face Scan</h1>
+            <p className="step-sub">Capture your selfie locally. No network is used during collection.</p>
+            <SelfieCapture onCapture={handleSelfie} />
+          </>
         )}
 
         {step === 'stroop' && (
-        <>
-          <div className="badge badge-amber">Step 3 of 6 — Cognitive</div>
-          <h1 className="step-title">Stroop Test</h1>
-          <StroopTest onComplete={handleStroop} />
-        </>
+          <>
+            <div className="badge badge-amber">Step 3 of 6 — Stroop Test</div>
+            <h1 className="step-title">Stroop Test</h1>
+            <StroopTest onComplete={handleStroop} />
+          </>
         )}
 
         {step === 'reflex' && (
-        <>
-          <div className="badge badge-amber">Step 4 of 6 — Cognitive</div>
-          <h1 className="step-title">Neural Reflex</h1>
-          <NeuralReflex onComplete={handleReflex} />
-        </>
+          <>
+            <div className="badge badge-amber">Step 4 of 6 — Reflex Test</div>
+            <h1 className="step-title">Reflex Test</h1>
+            <NeuralReflex onComplete={handleReflex} />
+          </>
         )}
 
-        {step === 'vocal' && (
-        <>
-          <div className="badge badge-amber">Step 5 of 6 — Cognitive</div>
-          <h1 className="step-title">Vocal Imprint</h1>
-          <VocalImprint onComplete={handleVocal} />
-        </>
+        {step === 'voice' && (
+          <>
+            <div className="badge badge-amber">Step 5 of 6 — Voice Recording</div>
+            <h1 className="step-title">Voice Recording</h1>
+            <p className="step-sub">Record a 4-second voice sample locally. No network is used during collection.</p>
+
+            {!isVoiceRecording && (
+              <button className="btn btn-primary" onClick={() => void handleVoiceCapture()}>
+                Start 4-Second Recording
+              </button>
+            )}
+
+            <div className="card" style={{ width: '100%', marginTop: 18 }}>
+              <div style={{ color: 'var(--grey)', fontSize: 13, marginBottom: 12 }}>Recording progress</div>
+              <div style={{ width: '100%', height: 10, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div style={{ width: `${voiceProgress}%`, height: '100%', background: 'linear-gradient(90deg,#00C2FF,#38bdf8)', transition: 'width 80ms linear' }} />
+              </div>
+              <div style={{ marginTop: 12, color: '#d7f9ff', fontWeight: 700 }}>
+                {isVoiceRecording ? `Recording... ${(voiceCountdownMs / 1000).toFixed(1)}s` : collected.voiceBlob ? 'Voice sample captured' : 'Ready to record'}
+              </div>
+            </div>
+          </>
         )}
 
         {step === 'digitspan' && (
-        <>
-          <div className="badge badge-amber">Step 6 of 6 — Cognitive</div>
-          <h1 className="step-title">Digit Span</h1>
-          <DigitSpan onComplete={(span) => {
-            setDigitSpan(span)
-            goNextStep()
-          }} />
-        </>
+          <>
+            <div className="badge badge-amber">Step 6 of 6 — Memory Test</div>
+            <h1 className="step-title">Memory Test</h1>
+            <DigitSpan onComplete={handleDigitSpan} />
+          </>
         )}
 
-        {step === 'submitting' && (
-        <>
-          <h1 className="step-title">Registering...</h1>
-          <p className="step-sub">Creating your biometric profile with AWS Rekognition</p>
-          <div style={{ marginTop: 40, color: 'var(--green)', fontSize: 48 }}>⬡</div>
-        </>
+        {step === 'uploading' && (
+          <>
+            <div className="badge badge-green">Upload</div>
+            <h1 className="step-title">Uploading...</h1>
+            <p className="step-sub">Submitting your enrollment package to the backend.</p>
+            <div style={{ marginTop: 40, color: 'var(--green)', fontSize: 48 }}>⬡</div>
+          </>
         )}
-
-        {step === 'success' && (
-        <>
-          <div className="badge badge-green" style={{ margin: '0 auto 20px' }}>✓ Registered</div>
-          <h1 className="step-title">Profile Created</h1>
-          <p className="step-sub">Welcome, {form.firstName}. Your biometric identity is now active.</p>
-
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 10 }}>
-          <div className="badge badge-green" style={{ marginBottom: 0 }}>device: {deviceType}</div>
-          </div>
-
-          <div className="card" style={{ width: '100%', marginTop: 8 }}>
-            <div className="metric-row">
-              <span className="metric-label">Worker ID</span>
-              <span className="metric-value" style={{ fontSize: 11 }}>{workerId.slice(0,12)}...</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-label">Name</span>
-              <span className="metric-value">{form.firstName} {form.lastName}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-label">Site</span>
-              <span className="metric-value">{form.employerSite || '—'}</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-label">Facial confidence</span>
-              <span className="metric-value">{confidence}%</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-label">Stroop score</span>
-              <span className="metric-value">{cognitive.stroopScore}%</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-label">Reflex velocity</span>
-              <span className="metric-value">{cognitive.reflexVelocityMs}ms</span>
-            </div>
-            <div className="metric-row">
-              <span className="metric-label">Digit span</span>
-              <span className="metric-value">{cognitive.digitSpan ?? 0}</span>
-            </div>
-
-            <div className="metric-row">
-              <span className="metric-label">Behavioral profile</span>
-              <span className="metric-value">{behavioralCaptured ? 'captured ✓' : 'not captured'}</span>
-            </div>
-
-            <div className="metric-row">
-              <span className="metric-label">Post-quantum signature</span>
-              <span className="metric-value">{pqCaptured ? `${PQ_ALGORITHM} ✓` : 'not captured'}</span>
-            </div>
-          </div>
-          <button className="btn btn-success" style={{ marginTop: 20 }} onClick={() => nav('/confirm')}>
-            Confirm Payment →
-          </button>
-        </>
-      )}
 
         {step === 'error' && (
-        <>
-          <div className="badge" style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.25)', margin: '0 auto 20px' }}>
-            Error
-          </div>
-          <h1 className="step-title">Registration Failed</h1>
-          <p className="step-sub">{errorMsg}</p>
-          <button className="btn btn-outline" onClick={() => setStep('identity')}>Try Again</button>
-        </>
+          <>
+            <div className="badge" style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.25)', margin: '0 auto 20px' }}>
+              Error
+            </div>
+            <h1 className="step-title">Enrollment Failed</h1>
+            <p className="step-sub">{errorMsg || 'An unexpected error occurred.'}</p>
+            <button className="btn btn-outline" onClick={resetEnrollment}>Restart Enrollment</button>
+          </>
         )}
       </div>
     </BehavioralCapture>
