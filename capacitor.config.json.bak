@@ -1,0 +1,5 @@
+{
+  "appId": "com.hvguard.payguard",
+  "appName": "PayGuard",
+  "webDir": "dist"
+}
