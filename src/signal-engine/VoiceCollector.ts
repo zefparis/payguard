@@ -201,14 +201,18 @@ class VoiceCollector {
     this.embedding = null
     this.quality = null
 
-    // Note: MediaRecorder fonctionne aussi dans Capacitor (WebView) dans beaucoup de cas.
-    // On garde donc l’implémentation existante. Ce branch sert surtout de point
-    // d’extension si on ajoute un plugin natif micro plus tard.
+    // En natif, déclencher explicitement la demande de permission et fournir
+    // un message d’erreur plus clair.
     if (Capacitor.isNativePlatform()) {
-      // Pour l’instant: fallback identique au web
+      this.stream = await navigator.mediaDevices
+        .getUserMedia({ audio: true })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          throw new Error('Microphone permission denied: ' + msg)
+        })
+    } else {
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     }
-
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
       ? 'audio/webm;codecs=opus'
       : 'audio/webm'

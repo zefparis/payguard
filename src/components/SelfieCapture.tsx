@@ -1,8 +1,6 @@
 import { useCamera } from '../hooks/useCamera'
 import { CameraInitLoader } from './CameraInitLoader'
 import { useState } from 'react'
-import { Capacitor } from '@capacitor/core'
-import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 
 interface Props {
   onCapture: (b64: string) => void
@@ -14,26 +12,7 @@ export function SelfieCapture({ onCapture, loading }: Props) {
   const [captured, setCaptured] = useState<string | null>(null)
 
   async function handleCapture() {
-    // Natif: utiliser le plugin Capacitor Camera
-    if (Capacitor.isNativePlatform()) {
-      const photo = await Camera.getPhoto({
-        quality: 80,
-        allowEditing: false,
-        resultType: CameraResultType.Base64,
-        source: CameraSource.Camera,
-        width: 640,
-        height: 640,
-      })
-
-      const base64 = photo.base64String
-      if (!base64) return
-      const dataUrl = `data:image/${photo.format || 'jpeg'};base64,${base64}`
-      setCaptured(dataUrl)
-      onCapture(dataUrl)
-      return
-    }
-
-    // Web: utiliser getUserMedia + canvas (hook existant)
+    // Toujours utiliser getUserMedia + canvas (fonctionne aussi dans Capacitor Android)
     const b64 = capture()
     if (b64) {
       setCaptured(b64)
@@ -56,18 +35,16 @@ export function SelfieCapture({ onCapture, loading }: Props) {
         border: `2px solid ${captured ? 'var(--green)' : 'var(--cyan)'}`,
         aspectRatio: '4/3', background: 'var(--bg3)'
       }}>
-        {!Capacitor.isNativePlatform() && (
-          <video
-            ref={videoRef}
-            autoPlay playsInline muted
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: captured ? 'none' : 'block' }}
-          />
-        )}
+        <video
+          ref={videoRef}
+          autoPlay playsInline muted
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: captured ? 'none' : 'block' }}
+        />
         {captured && (
           <img src={captured} alt="captured"
             style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         )}
-        {!ready && !captured && !Capacitor.isNativePlatform() && (
+        {!ready && !captured && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex',
             alignItems: 'center', justifyContent: 'center', color: 'var(--grey)'
