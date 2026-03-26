@@ -3,6 +3,8 @@ const API = import.meta.env.VITE_API_URL || 'https://hybrid-vector-api.onrender.
 const TENANT = import.meta.env.VITE_TENANT_ID
 const API_KEY = import.meta.env.VITE_HV_API_KEY
 
+import { isSecureCollectMode } from './secureMode'
+
 const headers = () => {
   if (!API_KEY) throw new Error('Missing VITE_HV_API_KEY')
   if (!TENANT) throw new Error('Missing VITE_TENANT_ID')
@@ -31,6 +33,9 @@ export async function enrollWorker(payload: {
     [key: string]: unknown
   }
 }): Promise<{ success: boolean; student_id: string; confidence: number }> {
+  if (isSecureCollectMode()) {
+    throw new Error('Mode collecte sécurisé actif: upload bloqué (repassez en ligne pour envoyer).')
+  }
   const res = await fetch(`${API}/edguard/enroll`, {
     method: 'POST',
     headers: headers(),
@@ -45,6 +50,9 @@ export async function verifyWorker(payload: {
   first_name: string
   last_name: string
 }): Promise<{ verified: boolean; similarity: number; student_id: string; first_name: string }> {
+  if (isSecureCollectMode()) {
+    throw new Error('Mode collecte sécurisé actif: vérification bloquée (repassez en ligne).')
+  }
   const res = await fetch(`${API}/edguard/verify`, {
     method: 'POST',
     headers: headers(),

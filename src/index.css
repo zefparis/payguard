@@ -157,3 +157,19 @@ label {
 .metric-row:last-child { border-bottom: none; }
 .metric-label { color: var(--grey); }
 .metric-value { font-weight: 600; color: var(--green); }
+
+.secure-banner {
+  width: 100%;
+  max-width: 440px;
+  margin: -10px 0 20px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: var(--amber);
+  font-size: 12px;
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

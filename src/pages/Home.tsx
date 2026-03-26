@@ -13,6 +13,18 @@ export function Home() {
       </p>
 
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>
+        <div className="card" style={{ cursor: 'pointer' }} onClick={() => nav('/secure-enroll')}>
+          <div className="badge badge-green">Air-gap</div>
+          <h2 style={{ fontSize: 18, marginBottom: 6 }}>Register (secure collect)</h2>
+          <p style={{ fontSize: 13, color: 'var(--grey)', lineHeight: 1.6 }}>
+            INIT online → collecte offline (IndexedDB) → upload online.<br />
+            Mode collecte sécurisé: aucun appel réseau.
+          </p>
+          <button className="btn btn-primary" style={{ marginTop: 20 }}>
+            Start Secure Enrollment →
+          </button>
+        </div>
+
         <div className="card" style={{ cursor: 'pointer' }} onClick={() => nav('/enroll')}>
           <div className="badge badge-green">New worker</div>
           <h2 style={{ fontSize: 18, marginBottom: 6 }}>Register</h2>
