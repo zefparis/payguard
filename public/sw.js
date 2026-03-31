@@ -24,6 +24,10 @@ self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
+  if (request.method !== 'GET') {
+    return
+  }
+
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirst(request))
     return

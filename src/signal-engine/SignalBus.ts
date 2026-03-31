@@ -32,24 +32,8 @@ class SignalBus {
         continue
       }
 
-      const batch = [...buffer]
       this.buffers.set(channel, [])
-      this.sendToBackend(channel, batch)
     }
-  }
-
-  private sendToBackend(channel: string, batch: unknown[]): void {
-    void fetch('/api/signals', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        channel,
-        batch,
-        source: 'payguard',
-      }),
-    }).catch(() => {})
   }
 }
 
