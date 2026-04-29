@@ -61,3 +61,63 @@ export async function verifyWorker(payload: {
   if (!res.ok) throw new Error(`Verify failed: ${res.status}`)
   return res.json()
 }
+
+/**
+ * Check whether an enrollment exists for the given (first_name, last_name) pair
+ * under the current tenant. Used by the auth-payment flow to avoid running
+ * facial / vocal verification on a non-enrolled user (which would always
+ * yield zeroed scores).
+ */
+export async function lookupEnrollment(payload: {
+  first_name: string
+  last_name: string
+}): Promise<{ found: boolean; student_id?: string; first_name?: string }> {
+  const res = await fetch(`${API}/edguard/lookup`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ ...payload, tenant_id: TENANT }),
+  })
+  if (!res.ok) throw new Error(`lookup failed: ${res.status}`)
+  return res.json()
+}
+
+/**
+ * Real voice biometric verify — sends a freshly extracted 192-dim MFCC
+ * embedding to the backend, which compares it (cosine sim) against the
+ * embedding stored at enrollment time for (first_name, last_name).
+ *
+ * Returns vocal_score in [0, 1] (0 means no enrollment / mismatch / silence).
+ */
+export async function vocalVerify(payload: {
+  first_name: string
+  last_name: string
+  vocal_embedding: number[]
+}): Promise<{ vocal_score: number; matched: boolean; reason?: string }> {
+  const res = await fetch(`${API}/edguard/vocal-verify`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ ...payload, tenant_id: TENANT }),
+  })
+  if (!res.ok) throw new Error(`vocal-verify failed: ${res.status}`)
+  return res.json()
+}
+
+/**
+ * /auth-payment enrichment — sent fire-and-forget after the reflex test.
+ * The decision is computed client-side; this call lets the backend persist
+ * vocal/behavioral/reflex scores and re-emit a richer event to HCS-U7.
+ */
+export async function sendAuthPaymentSignals(payload: {
+  student_id: string
+  vocal_score: number
+  behavioral_score: number
+  reaction_ms: number
+}): Promise<{ success: boolean }> {
+  const res = await fetch(`${API}/edguard/auth-payment-signals`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ ...payload, tenant_id: TENANT }),
+  })
+  if (!res.ok) throw new Error(`auth-payment-signals failed: ${res.status}`)
+  return res.json()
+}

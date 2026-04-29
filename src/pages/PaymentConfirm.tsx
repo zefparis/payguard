@@ -1,146 +1,145 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SelfieCapture } from '../components/SelfieCapture'
-import { verifyWorker } from '../services/api'
-import { BehavioralCapture } from '../components/BehavioralCapture'
-import type { BehavioralController, BehavioralProfile } from '../hooks/useBehavioral'
-import { generateSessionKeypair, PQ_ALGORITHM, signProfile } from '../services/postQuantum'
-import { behavioralCollector, cognitiveCollector, faceCollector, signalBus } from '../signal-engine'
+import { ReactionTime } from '../components/ReactionTime'
+import {
+  lookupEnrollment,
+  sendAuthPaymentSignals,
+  verifyWorker,
+  vocalVerify,
+} from '../services/api'
+import { useVoiceBiometrics } from '../hooks/useVoiceBiometrics'
+import {
+  useBehavioral,
+  requestMotionPermission,
+  type BehavioralProfile,
+} from '../hooks/useBehavioral'
 
-type Step = 'identity' | 'details' | 'selfie' | 'verifying' | 'success' | 'failed'
+// Configurable composite score threshold (default 0.75)
+const PAYMENT_THRESHOLD = Number(import.meta.env.VITE_PAYMENT_THRESHOLD ?? 0.75)
+const REVIEW_THRESHOLD = 0.6
+const MAX_ATTEMPTS = 3
+
+type Step =
+  | 'identity'
+  | 'not-enrolled'
+  | 'details'
+  | 'selfie'
+  | 'vocal'
+  | 'reaction'
+  | 'computing'
+  | 'decision'
+
+type Decision = 'APPROVED' | 'REVIEW' | 'REJECTED' | 'MANUAL_REVIEW'
+
+const VOCAL_RECORD_MS = 3000
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
+  'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
-type IdentityStepProps = {
-  firstName: string
-  lastName: string
-  onSubmit: (e: FormEvent) => void
-  onFirstNameChange: (e: ChangeEvent<HTMLInputElement>) => void
-  onLastNameChange: (e: ChangeEvent<HTMLInputElement>) => void
+/**
+ * Behavioral score — mean of every signal that returned a usable measurement.
+ *
+ * - Gyroscope std (rad/s) — humans micro-tremor > 0.05, bots ~ 0.
+ * - Accelerometer magnitude std (m/s^2) — humans hand variation > 0.1.
+ * - Inter-tap CV (std/mean) — humans 0.15+, bots near-zero.
+ * - Touch pressure variance — humans variable, emulators fixed.
+ *
+ * If no sensor produced data (desktop without taps, locked-down browser),
+ * fall back to a low "prior" that distinguishes a touch device from a
+ * vanilla desktop / headless.
+ */
+function behavioralScoreFromProfile(p: BehavioralProfile): number {
+  const scores: number[] = []
+
+  const gyroStd = p.motion.rotation_rate?.mag_std
+  if (gyroStd !== undefined && gyroStd > 0) {
+    scores.push(Math.min(1, gyroStd * 20))
+  }
+
+  const accelStd = p.motion.accel_gravity?.mag_std
+  if (accelStd !== undefined && accelStd > 0) {
+    scores.push(Math.min(1, accelStd * 10))
+  }
+
+  const tapInterMean = p.touch.inter_tap_ms_mean
+  const tapDurMean = p.touch.tap_duration_ms_mean
+  if (tapInterMean > 0 && tapDurMean > 0) {
+    // approximate tap CV from available stats
+    scores.push(Math.min(1, (tapInterMean / Math.max(1, tapDurMean)) * 0.3))
+  }
+
+  if (scores.length === 0) {
+    return p.device.touch_capable ? 0.4 : 0.2
+  }
+
+  return scores.reduce((a, b) => a + b, 0) / scores.length
 }
 
-const IdentityStep = memo(function IdentityStep({
-  firstName,
-  lastName,
-  onSubmit,
-  onFirstNameChange,
-  onLastNameChange,
-}: IdentityStepProps) {
-  return (
-    <>
-      <div className="badge badge-green">Step 1 — Identity</div>
-      <h1 className="step-title">Confirm Payment</h1>
-      <p className="step-sub">Enter your name. Then confirm with a selfie.</p>
-      <form onSubmit={onSubmit} style={{ width: '100%' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div className="field">
-            <label>First Name *</label>
-            <input value={firstName} onChange={onFirstNameChange} required placeholder="John" />
-          </div>
-          <div className="field">
-            <label>Last Name *</label>
-            <input value={lastName} onChange={onLastNameChange} required placeholder="Smith" />
-          </div>
-        </div>
-        <button className="btn btn-primary" type="submit">
-          Continue →
-        </button>
-      </form>
-    </>
-  )
-})
-
-type PaymentDetailsStepProps = {
-  amount: string
-  employer: string
-  month: string
-  months: string[]
-  year: string
-  onSubmit: (e: FormEvent) => void
-  onAmountChange: (e: ChangeEvent<HTMLInputElement>) => void
-  onEmployerChange: (e: ChangeEvent<HTMLInputElement>) => void
-  onMonthChange: (e: ChangeEvent<HTMLSelectElement>) => void
-  onYearChange: (e: ChangeEvent<HTMLInputElement>) => void
+interface Composite {
+  faceScore: number
+  cognitiveScore: number
+  composite: number
+  similarity: number
+  reactionMs: number
 }
 
-const PaymentDetailsStep = memo(function PaymentDetailsStep({
-  amount,
-  employer,
-  month,
-  months,
-  year,
-  onSubmit,
-  onAmountChange,
-  onEmployerChange,
-  onMonthChange,
-  onYearChange,
-}: PaymentDetailsStepProps) {
-  return (
-    <>
-      <div className="badge badge-green">Step 2 — Payment Details</div>
-      <h1 className="step-title">Payment Details</h1>
-      <p className="step-sub">Amount, pay period, employer/site.</p>
-      <form onSubmit={onSubmit} style={{ width: '100%' }}>
-        <div className="field">
-          <label>Amount (ZAR) *</label>
-          <input
-            type="number"
-            value={amount}
-            onChange={onAmountChange}
-            required
-            placeholder="15000"
-            step="0.01"
-          />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
-          <div className="field">
-            <label>Pay Period Month *</label>
-            <select value={month} onChange={onMonthChange} required>
-              <option value="">Select month</option>
-              {months.map(m => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>Year *</label>
-            <input
-              type="number"
-              value={year}
-              onChange={onYearChange}
-              required
-              placeholder="2026"
-              min="2020"
-              max="2030"
-            />
-          </div>
-        </div>
-        <div className="field">
-          <label>Employer / Site *</label>
-          <input value={employer} onChange={onEmployerChange} required placeholder="ABC Construction — Site B" />
-        </div>
-        <button className="btn btn-primary" type="submit">
-          Continue →
-        </button>
-      </form>
-    </>
-  )
-})
+// Reaction time -> cognitive score normalisation:
+// 250 ms -> ~1.0 ; 800 ms -> ~0.0
+function reactionToScore(ms: number): number {
+  const score = (800 - ms) / 500
+  return Math.max(0, Math.min(1, score))
+}
+
+const COPY: Record<Decision, { en: string; zu: string; xh: string; sub: string }> = {
+  APPROVED: {
+    en: 'Payment approved',
+    zu: 'Inkokhelo igunyaziwe',
+    xh: 'Intlawulo iphunyeziwe',
+    sub: 'You may proceed with disbursement.',
+  },
+  REVIEW: {
+    en: 'Pending human review',
+    zu: 'Kulindwe ukubuyekezwa umuntu',
+    xh: 'Kulindwe uphononongo lomntu',
+    sub: 'An agent will validate this request shortly.',
+  },
+  REJECTED: {
+    en: 'Verification failed — please try again',
+    zu: 'Ukuqinisekiswa kuhlulekile — sicela uzame futhi',
+    xh: 'Uqinisekiso aluphumelelanga — nceda uzame kwakhona',
+    sub: 'Make sure your face is well lit and clearly visible.',
+  },
+  MANUAL_REVIEW: {
+    en: 'Sent for manual review',
+    zu: 'Kuthunyelwe ukuze kubuyekezwe ngesandla',
+    xh: 'Kuthunyelwe kuphononongo lwesandla',
+    sub: 'A human agent will contact you to complete authentication.',
+  },
+}
+
+const TONE: Record<Decision, { color: string; bg: string; border: string; glyph: string }> = {
+  APPROVED:      { color: '#16a34a', bg: 'rgba(34,197,94,0.10)',  border: 'rgba(34,197,94,0.45)',  glyph: '✓' },
+  REVIEW:        { color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.45)', glyph: '!' },
+  REJECTED:      { color: '#ef4444', bg: 'rgba(239,68,68,0.10)',  border: 'rgba(239,68,68,0.45)',  glyph: '×' },
+  MANUAL_REVIEW: { color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.45)', glyph: '⌛' },
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '14px 16px',
+  borderRadius: 12,
+  border: '1px solid var(--border)',
+  background: 'rgba(3,7,18,0.6)',
+  color: 'var(--ink)',
+  fontSize: 15,
+  outline: 'none',
+}
 
 export function PaymentConfirm() {
   const nav = useNavigate()
-
-  useEffect(() => {
-    behavioralCollector.start()
-
-    return () => {
-      behavioralCollector.stop()
-    }
-  }, [])
-
   const [step, setStep] = useState<Step>('identity')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -148,238 +147,510 @@ export function PaymentConfirm() {
   const [month, setMonth] = useState('')
   const [year, setYear] = useState(new Date().getFullYear().toString())
   const [employer, setEmployer] = useState('')
-  const [result, setResult] = useState<{ similarity: number; firstName: string } | null>(null)
-  const [, setSelfieB64] = useState('')
-  const [errorMsg, setErrorMsg] = useState('')
+  const [similarity, setSimilarity] = useState<number | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string>('')
+  const [attempts, setAttempts] = useState(0)
+  const [decision, setDecision] = useState<Decision | null>(null)
+  const [studentId, setStudentId] = useState<string | null>(null)
+  const [vocalQuality, setVocalQuality] = useState<number | null>(null)
+  const [vocalError, setVocalError] = useState<string>('')
+  const [lookupBusy, setLookupBusy] = useState(false)
 
+  const voice = useVoiceBiometrics()
+  const behavioral = useBehavioral()
+  const vocalEmbeddingRef = useRef<Float32Array | null>(null)
+
+  // Mount-time effect only registers the unmount cleanup.
   useEffect(() => {
-    if (step === 'selfie') {
-      signalBus.pause()
+    return () => {
+      try { behavioral.stop() } catch { /* already stopped */ }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-      return () => {
-        signalBus.resume()
+  const decide = useCallback((c: Composite): Decision => {
+    if (c.composite >= PAYMENT_THRESHOLD) return 'APPROVED'
+    if (c.composite >= REVIEW_THRESHOLD) return 'REVIEW'
+    return 'REJECTED'
+  }, [])
+
+  const handleIdentity = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!firstName.trim() || !lastName.trim()) return
+    if (lookupBusy) return
+
+    // First user gesture — request iOS motion permission
+    try { await requestMotionPermission() } catch { /* user denied or unsupported */ }
+
+    // Block the flow if no enrollment exists
+    setLookupBusy(true)
+    setErrorMsg('')
+    try {
+      const lookup = await lookupEnrollment({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+      })
+      if (!lookup.found) {
+        setStep('not-enrolled')
+        return
       }
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Profile lookup failed')
+      return
+    } finally {
+      setLookupBusy(false)
     }
 
-    signalBus.resume()
-  }, [step])
-
-  const behavioralCtrlRef = useRef<BehavioralController | null>(null)
-  const [behavioralProfile, setBehavioralProfile] = useState<BehavioralProfile | null>(null)
-  const [pqPublicKey, setPqPublicKey] = useState<string | null>(null)
-  const [pqSignature, setPqSignature] = useState<string | null>(null)
-
-  const behavioralCaptured = useMemo(() => Boolean(behavioralProfile), [behavioralProfile])
-  const pqCaptured = useMemo(() => Boolean(pqPublicKey && pqSignature), [pqPublicKey, pqSignature])
-  const deviceType = useMemo(() => behavioralProfile?.device.device_type ?? 'unknown', [behavioralProfile])
-
-  const timestamp = useMemo(() => new Date().toLocaleString('en-ZA', {
-    dateStyle: 'medium',
-    timeStyle: 'short'
-  }), [])
-
-  const period = useMemo(() => `${month} ${year}`, [month, year])
-
-  const onBehavioralController = useCallback((controller: BehavioralController) => {
-    behavioralCtrlRef.current = controller
-  }, [])
-
-  const handleFirstNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    setFirstName(e.target.value)
-  }, [])
-
-  const handleLastNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    setLastName(e.target.value)
-  }, [])
-
-  const handleAmountChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    setAmount(e.target.value)
-  }, [])
-
-  const handleMonthChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
-    setMonth(e.target.value)
-  }, [])
-
-  const handleYearChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    setYear(e.target.value)
-  }, [])
-
-  const handleEmployerChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    setEmployer(e.target.value)
-  }, [])
-
-  const handleIdentity = useCallback((e: FormEvent) => {
-    e.preventDefault()
-    if (!firstName || !lastName) return
+    void behavioral.start()
     setStep('details')
-  }, [firstName, lastName])
+  }, [firstName, lastName, behavioral, lookupBusy])
 
-  const handleDetails = useCallback((e: FormEvent) => {
+  const handleDetails = useCallback((e: React.FormEvent) => {
     e.preventDefault()
     if (!amount || !month || !year) return
     setStep('selfie')
   }, [amount, month, year])
 
-  async function handleSelfie(b64: string) {
-    faceCollector.capture(b64)
-    setSelfieB64(b64)
-    setStep('verifying')
-    const startedAt = performance.now()
-
+  const handleSelfie = useCallback(async (b64: string) => {
+    setErrorMsg('')
     try {
-      // Stop behavioral capture right before network calls
-      const behavioral = behavioralCtrlRef.current?.stop()
-      if (behavioral) setBehavioralProfile(behavioral)
+      const res = await verifyWorker({ selfie_b64: b64, first_name: firstName, last_name: lastName })
+      setSimilarity(res.similarity)
+      setStudentId(res.student_id ?? null)
+      setStep('vocal')
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Face check failed')
+      setStep('identity')
+    }
+  }, [firstName, lastName])
 
-      // Create session PQ keypair + deterministic signature of payment details
-      const pqProfile = {
+  const handleVocal = useCallback(async () => {
+    setVocalError('')
+    let samples: Float32Array
+    try {
+      samples = await voice.recordAudio(VOCAL_RECORD_MS)
+    } catch (err) {
+      const errName = err instanceof Error ? err.name || 'Error' : 'Unknown'
+      const errMsg = err instanceof Error ? err.message : String(err)
+      console.error('[vocal] recordAudio failed', { errName, errMsg })
+      setVocalError(`${errName}: ${errMsg}`)
+      setVocalQuality(0)
+      setStep('reaction')
+      return
+    }
+
+    if (!samples || samples.length === 0) {
+      console.error('[vocal] recordAudio returned empty buffer')
+      setVocalError('Microphone returned empty audio')
+      setVocalQuality(0)
+      setStep('reaction')
+      return
+    }
+
+    const embedding = voice.extractMFCC(samples, 16000)
+    vocalEmbeddingRef.current = embedding
+
+    // Real biometric check: compare against enrolled embedding via backend
+    try {
+      const resp = await vocalVerify({
         first_name: firstName,
         last_name: lastName,
-        amount_zar: amount,
-        period,
-        employer_site: employer,
-        behavioral,
-      }
-      const { publicKey: pq_public_key, privateKey } = generateSessionKeypair()
-      const pq_signature = signProfile(pqProfile, privateKey)
-      setPqPublicKey(pq_public_key)
-      setPqSignature(pq_signature)
-
-      const res = await verifyWorker({ selfie_b64: b64, first_name: firstName, last_name: lastName })
-      const score = Math.round(res.similarity)
-      const durationMs = Math.round(performance.now() - startedAt)
-
-      cognitiveCollector.record({
-        testId: 'payment-confirm',
-        score,
-        durationMs,
+        vocal_embedding: Array.from(embedding),
       })
-
-      if (res.verified) {
-        setResult({ similarity: score, firstName: res.first_name })
-        setStep('success')
-      } else {
-        setResult({ similarity: score, firstName: firstName })
-        setStep('failed')
-      }
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Verification failed')
-      setStep('failed')
+      const score = Math.max(0, Math.min(1, resp.vocal_score))
+      setVocalQuality(score)
+      console.log('[vocal] verify result', { score, reason: resp.reason, samples: samples.length })
+    } catch (verifyErr) {
+      const errMsg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr)
+      console.warn('[vocal-verify] failed', errMsg)
+      setVocalQuality(0)
     }
-  }
+
+    setStep('reaction')
+  }, [voice, firstName, lastName])
+
+  const handleReactionDone = useCallback((avgMs: number) => {
+    setStep('computing')
+    const faceScore = (similarity ?? 0) / 100
+    const cognitiveScore = reactionToScore(avgMs)
+    // Weighted composite: face is the primary identity signal (70%),
+    // cognitive presence is a liveness cue (30%).
+    const compositeScore = 0.7 * faceScore + 0.3 * cognitiveScore
+    const c: Composite = {
+      faceScore,
+      cognitiveScore,
+      composite: compositeScore,
+      similarity: similarity ?? 0,
+      reactionMs: avgMs,
+    }
+    const nextAttempts = attempts + 1
+    setAttempts(nextAttempts)
+
+    let d = decide(c)
+    if (d === 'REJECTED' && nextAttempts >= MAX_ATTEMPTS) {
+      d = 'MANUAL_REVIEW'
+    }
+    setDecision(d)
+    setStep('decision')
+
+    // Fire-and-forget: ship vocal + behavioral + reflex signals to the backend
+    if (studentId) {
+      let behavioralScore = 0
+      try {
+        const profile = behavioral.stop()
+        behavioralScore = behavioralScoreFromProfile(profile)
+      } catch {
+        behavioralScore = 0
+      }
+      void sendAuthPaymentSignals({
+        student_id: studentId,
+        vocal_score: vocalQuality ?? 0,
+        behavioral_score: behavioralScore,
+        reaction_ms: avgMs,
+      }).catch((err) => {
+        console.warn('[auth-payment-signals] failed', err)
+      })
+    }
+  }, [similarity, attempts, decide, studentId, vocalQuality, behavioral])
+
+  const retry = useCallback(() => {
+    setSimilarity(null)
+    setDecision(null)
+    setErrorMsg('')
+    setVocalQuality(null)
+    setVocalError('')
+    vocalEmbeddingRef.current = null
+    setStudentId(null)
+    void behavioral.start()
+    setStep('selfie')
+  }, [behavioral])
+
+  const restart = useCallback(() => {
+    setSimilarity(null)
+    setDecision(null)
+    setErrorMsg('')
+    setAttempts(0)
+    setVocalQuality(null)
+    setVocalError('')
+    vocalEmbeddingRef.current = null
+    setStudentId(null)
+    setStep('identity')
+  }, [])
+
+  const progressPct = useMemo(() => {
+    switch (step) {
+      case 'identity':     return 0
+      case 'not-enrolled': return 0
+      case 'details':      return 12
+      case 'selfie':       return 25
+      case 'vocal':        return 50
+      case 'reaction':     return 70
+      case 'computing':    return 90
+      case 'decision':     return 100
+    }
+  }, [step])
+
+  const period = useMemo(() => `${month} ${year}`, [month, year])
 
   return (
-    <BehavioralCapture enabled={step !== 'identity' && step !== 'details'} onController={onBehavioralController}>
-      <div className="page">
-        <div className="logo" style={{ cursor: 'pointer' }} onClick={() => nav('/')}>← PAYGUARD</div>
+    <div className="page">
+      <div className="logo" style={{ cursor: 'pointer' }} onClick={() => nav('/')}>← PAYGUARD</div>
 
-        {step === 'identity' && (
-          <IdentityStep
-            firstName={firstName}
-            lastName={lastName}
-            onSubmit={handleIdentity}
-            onFirstNameChange={handleFirstNameChange}
-            onLastNameChange={handleLastNameChange}
-          />
-        )}
-
-        {step === 'details' && (
-          <PaymentDetailsStep
-            amount={amount}
-            employer={employer}
-            month={month}
-            months={MONTHS}
-            year={year}
-            onSubmit={handleDetails}
-            onAmountChange={handleAmountChange}
-            onEmployerChange={handleEmployerChange}
-            onMonthChange={handleMonthChange}
-            onYearChange={handleYearChange}
-          />
-        )}
-
-        {step === 'selfie' && (
-          <>
-            <div className="badge badge-green">Step 3 — Selfie Verification</div>
-            <h1 className="step-title">Face Verification</h1>
-            <p className="step-sub">Look at the camera to confirm your identity.</p>
-            <SelfieCapture onCapture={handleSelfie} />
-          </>
-        )}
-
-        {step === 'verifying' && (
-          <>
-            <h1 className="step-title">Verifying...</h1>
-            <p className="step-sub">Matching your face against registered profile</p>
-            <div style={{ marginTop: 40, color: 'var(--green)', fontSize: 48 }}>⬡</div>
-          </>
-        )}
-
-        {step === 'success' && (
-          <>
-            <div className="badge badge-green" style={{ margin: '0 auto 16px' }}>✓ Payment Confirmed</div>
-            <h1 className="step-title">Payment Confirmed</h1>
-            <p className="step-sub">Biometrically verified receipt</p>
-
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 10 }}>
-              <div className="badge badge-green" style={{ marginBottom: 0 }}>device: {deviceType}</div>
-            </div>
-
-            <div className="card" style={{ width: '100%', marginTop: 8 }}>
-              <div className="metric-row">
-                <span className="metric-label">Worker</span>
-                <span className="metric-value">{firstName} {lastName}</span>
-              </div>
-              <div className="metric-row">
-                <span className="metric-label">Amount</span>
-                <span className="metric-value">ZAR {parseFloat(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-              <div className="metric-row">
-                <span className="metric-label">Period</span>
-                <span className="metric-value">{period}</span>
-              </div>
-              <div className="metric-row">
-                <span className="metric-label">Employer / Site</span>
-                <span className="metric-value">{employer}</span>
-              </div>
-              <div className="metric-row">
-                <span className="metric-label">Time</span>
-                <span className="metric-value">{timestamp}</span>
-              </div>
-              <div className="metric-row">
-                <span className="metric-label">Match</span>
-                <span className="metric-value">{result?.similarity}%</span>
-              </div>
-              <div className="metric-row">
-                <span className="metric-label">Behavioral</span>
-                <span className="metric-value">{behavioralCaptured ? 'captured ✓' : 'not captured'}</span>
-              </div>
-              <div className="metric-row">
-                <span className="metric-label">Post-quantum</span>
-                <span className="metric-value">{pqCaptured ? `${PQ_ALGORITHM} ✓` : 'not captured'}</span>
-              </div>
-            </div>
-            <button className="btn btn-outline" style={{ marginTop: 20 }} onClick={() => nav('/')}
-            >Done</button>
-          </>
-        )}
-
-        {step === 'failed' && (
-          <>
-            <div className="badge" style={{ background:'rgba(239,68,68,0.12)', color:'var(--red)', border:'1px solid rgba(239,68,68,0.25)', margin:'0 auto 16px' }}>
-              Not Verified
-            </div>
-            <h1 className="step-title">Identity Not Verified</h1>
-            <p className="step-sub">
-              {errorMsg || `Face match failed. Match score: ${result?.similarity}%`}
-            </p>
-            <div style={{ display: 'flex', gap: 12, width: '100%', marginTop: 20 }}>
-              <button className="btn btn-outline" onClick={() => setStep('selfie')}>Try Again</button>
-              <button className="btn btn-outline" onClick={() => nav('/')}>Cancel</button>
-            </div>
-          </>
-        )}
+      <div className="progress-bar" style={{ width: '100%', maxWidth: 440 }}>
+        <div className="progress-fill" style={{ width: `${progressPct}%` }} />
       </div>
-    </BehavioralCapture>
+
+      {step === 'identity' && (
+        <>
+          <div className="badge badge-green">Step 1 — Identity</div>
+          <h1 className="step-title">Confirm Payment</h1>
+          <p className="step-sub">
+            Enter your first and last name as registered with the
+            disbursement programme.
+          </p>
+          {errorMsg && (
+            <div className="card" style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>
+              {errorMsg}
+            </div>
+          )}
+          <form onSubmit={handleIdentity} style={{ width: '100%' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="field">
+                <label>First Name *</label>
+                <input
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                  placeholder="John"
+                  style={inputStyle}
+                />
+              </div>
+              <div className="field">
+                <label>Last Name *</label>
+                <input
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                  placeholder="Smith"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+            <button className="btn btn-primary" type="submit"
+              disabled={!firstName.trim() || !lastName.trim() || lookupBusy}>
+              {lookupBusy ? 'Looking up...' : 'Continue →'}
+            </button>
+          </form>
+        </>
+      )}
+
+      {step === 'not-enrolled' && (
+        <>
+          <div className="badge" style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.25)', margin: '0 auto 16px' }}>
+            No profile found
+          </div>
+          <h1 className="step-title">
+            {firstName.trim()} {lastName.trim()} is not enrolled yet.
+          </h1>
+          <p className="step-sub">
+            Please complete enrolment first — we need a registered face and
+            voice profile to verify identity before releasing payment.
+          </p>
+          <button className="btn btn-primary" onClick={() => nav('/enroll')}>
+            Go to enrolment →
+          </button>
+          <button className="btn btn-outline" style={{ marginTop: 12 }} onClick={() => setStep('identity')}>
+            Try a different name
+          </button>
+        </>
+      )}
+
+      {step === 'details' && (
+        <>
+          <div className="badge badge-green">Step 2 — Payment Details</div>
+          <h1 className="step-title">Payment Details</h1>
+          <p className="step-sub">Amount, pay period, employer/site.</p>
+          <form onSubmit={handleDetails} style={{ width: '100%' }}>
+            <div className="field">
+              <label>Amount (ZAR) *</label>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                required
+                placeholder="15000"
+                step="0.01"
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+              <div className="field">
+                <label>Pay Period Month *</label>
+                <select value={month} onChange={(e) => setMonth(e.target.value)} required style={inputStyle}>
+                  <option value="">Select month</option>
+                  {MONTHS.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Year *</label>
+                <input
+                  type="number"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  required
+                  placeholder="2026"
+                  min="2020"
+                  max="2030"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+            <div className="field">
+              <label>Employer / Site *</label>
+              <input
+                value={employer}
+                onChange={(e) => setEmployer(e.target.value)}
+                required
+                placeholder="ABC Construction — Site B"
+                style={inputStyle}
+              />
+            </div>
+            <button className="btn btn-primary" type="submit">
+              Continue →
+            </button>
+          </form>
+        </>
+      )}
+
+      {step === 'selfie' && (
+        <>
+          <div className="badge badge-green">Step 3 of 5 — Live photo</div>
+          <h1 className="step-title">Face Verification</h1>
+          <p className="step-sub">
+            Center your face in the frame and capture. We compare it to your
+            registered profile.
+          </p>
+          <SelfieCapture onCapture={handleSelfie} loading={!!similarity === false && step === 'selfie'} />
+        </>
+      )}
+
+      {step === 'vocal' && (
+        <>
+          <div className="badge badge-green">Step 4 of 5 — Voice sample</div>
+          <h1 className="step-title">Voice Verification</h1>
+          <p className="step-sub">
+            Hold the button and read this short sentence aloud for 3 seconds:
+            <br />
+            <em style={{ color: 'var(--ink, #fff)' }}>"I confirm this payment release."</em>
+          </p>
+          {vocalError && (
+            <div className="card" style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>
+              {vocalError} — continuing without voice.
+            </div>
+          )}
+          {voice.isRecording ? (
+            <div className="card" style={{ textAlign: 'center', padding: '20px 12px' }}>
+              <p style={{ fontSize: 12, color: 'var(--grey)', letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 8 }}>
+                Recording...
+              </p>
+              <p style={{ fontSize: 28, fontWeight: 800, color: 'var(--green, #22c55e)' }}>
+                {(voice.countdownMs / 1000).toFixed(1)}s
+              </p>
+            </div>
+          ) : (
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={handleVocal}
+              disabled={voice.isRecording}
+            >
+              Start voice sample →
+            </button>
+          )}
+        </>
+      )}
+
+      {step === 'reaction' && (
+        <>
+          <div className="badge badge-green">Step 5 of 5 — Quick tap test</div>
+          <h1 className="step-title">Reaction Time</h1>
+          <p className="step-sub">
+            Tap the button as fast as you can when it turns yellow. 5 short
+            rounds.
+          </p>
+          <ReactionTime onComplete={handleReactionDone} />
+        </>
+      )}
+
+      {step === 'computing' && (
+        <>
+          <h1 className="step-title">Computing decision...</h1>
+          <div style={{ marginTop: 40, color: 'var(--green)', fontSize: 48 }}>⬡</div>
+        </>
+      )}
+
+      {step === 'decision' && decision && (
+        <DecisionCard
+          decision={decision}
+          attempts={attempts}
+          firstName={firstName}
+          lastName={lastName}
+          amount={amount}
+          period={period}
+          employer={employer}
+          onRetry={retry}
+          onRestart={restart}
+        />
+      )}
+    </div>
+  )
+}
+
+interface DecisionCardProps {
+  decision: Decision
+  attempts: number
+  firstName: string
+  lastName: string
+  amount: string
+  period: string
+  employer: string
+  onRetry: () => void
+  onRestart: () => void
+}
+
+function DecisionCard({ decision, attempts, firstName, lastName, amount, period, employer, onRetry, onRestart }: DecisionCardProps) {
+  const tone = TONE[decision]
+  const copy = COPY[decision]
+  const canRetry = decision === 'REJECTED' && attempts < MAX_ATTEMPTS
+
+  return (
+    <div style={{ display: 'grid', gap: 16, width: '100%' }}>
+      <div style={{
+        borderRadius: 16,
+        border: `1px solid ${tone.border}`,
+        background: tone.bg,
+        padding: '24px 20px',
+        textAlign: 'center',
+      }}>
+        <div style={{
+          width: 64, height: 64, borderRadius: '50%',
+          background: tone.color, color: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 36, fontWeight: 800, margin: '0 auto 12px',
+        }}>
+          {tone.glyph}
+        </div>
+        <div style={{
+          fontSize: 11, fontWeight: 800, letterSpacing: '0.18em',
+          textTransform: 'uppercase', color: tone.color, marginBottom: 8,
+        }}>
+          {decision.replace('_', ' ')}
+        </div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', marginBottom: 4 }}>
+          {copy.en}
+        </div>
+        <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.78)', marginBottom: 2 }}>
+          {copy.zu}
+        </div>
+        <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.78)', marginBottom: 12 }}>
+          {copy.xh}
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--grey)', lineHeight: 1.6 }}>
+          {copy.sub}
+        </div>
+      </div>
+
+      {decision === 'APPROVED' && (
+        <div className="card" style={{ width: '100%' }}>
+          <div className="metric-row">
+            <span className="metric-label">Worker</span>
+            <span className="metric-value">{firstName} {lastName}</span>
+          </div>
+          <div className="metric-row">
+            <span className="metric-label">Amount</span>
+            <span className="metric-value">ZAR {parseFloat(amount || '0').toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+          <div className="metric-row">
+            <span className="metric-label">Period</span>
+            <span className="metric-value">{period}</span>
+          </div>
+          <div className="metric-row">
+            <span className="metric-label">Employer / Site</span>
+            <span className="metric-value">{employer}</span>
+          </div>
+        </div>
+      )}
+
+      {canRetry && (
+        <button className="btn btn-primary" onClick={onRetry}>
+          Try again
+        </button>
+      )}
+      <button className="btn btn-outline" onClick={onRestart}>
+        Start a new request
+      </button>
+    </div>
   )
 }
