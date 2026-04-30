@@ -61,18 +61,21 @@ export async function verifyWorker(payload: {
   selfie_b64: string
   first_name: string
   last_name: string
+  student_id?: string
 }): Promise<{ verified: boolean; similarity: number; student_id: string; first_name: string }> {
   if (isSecureCollectMode()) {
     throw new Error('Secure collection mode is active: verification blocked (go back online).')
   }
+  const body: Record<string, unknown> = {
+    ...payload,
+    selfie_b64: stripDataUrlPrefix(payload.selfie_b64),
+    tenant_id: TENANT,
+  }
+  if (!payload.student_id) delete body.student_id
   const res = await fetch(`${API}/payguard/verify`, {
     method: 'POST',
     headers: headers(),
-    body: JSON.stringify({
-      ...payload,
-      selfie_b64: stripDataUrlPrefix(payload.selfie_b64),
-      tenant_id: TENANT,
-    }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(`Verify failed: ${res.status}`)
   return res.json()

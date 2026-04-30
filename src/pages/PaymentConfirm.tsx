@@ -177,6 +177,7 @@ export function PaymentConfirm() {
         setStep('not-enrolled')
         return
       }
+      if (lookup.student_id) setStudentId(lookup.student_id)
     } catch (err) {
       console.error('[PAYGUARD-LOOKUP] error:', err)
       setErrorMsg(err instanceof Error ? err.message : 'Profile lookup failed')
@@ -193,7 +194,7 @@ export function PaymentConfirm() {
     console.log('[PAYGUARD-SELFIE] b64 length:', b64?.length)
     setErrorMsg('')
     try {
-      const res = await verifyWorker({ selfie_b64: b64, first_name: firstName, last_name: lastName })
+      const res = await verifyWorker({ selfie_b64: b64, first_name: firstName, last_name: lastName, student_id: studentId ?? undefined })
       setSimilarity(res.similarity)
       setStudentId(res.student_id ?? null)
       setStep('vocal')
@@ -201,7 +202,7 @@ export function PaymentConfirm() {
       setErrorMsg(err instanceof Error ? err.message : 'Face check failed')
       setStep('identity')
     }
-  }, [firstName, lastName])
+  }, [firstName, lastName, studentId])
 
   const handleVocal = useCallback(async () => {
     setVocalError('')
