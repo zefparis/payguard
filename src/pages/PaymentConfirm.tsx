@@ -207,6 +207,7 @@ export function PaymentConfirm() {
   }, [firstName, lastName, behavioral, lookupBusy])
 
   const handleSelfie = useCallback(async (b64: string) => {
+    console.log('[PAYGUARD-SELFIE] b64 length:', b64?.length)
     setErrorMsg('')
     try {
       const res = await verifyWorker({ selfie_b64: b64, first_name: firstName, last_name: lastName })
@@ -472,7 +473,7 @@ export function PaymentConfirm() {
             Center your face in the frame and capture. We compare it to your
             registered profile.
           </p>
-          <SelfieCapture onCapture={handleSelfie} loading={!!similarity === false && step === 'selfie'} />
+          <SelfieCapture onCapture={handleSelfie} />
         </>
       )}
 
