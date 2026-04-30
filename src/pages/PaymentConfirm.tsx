@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SelfieCapture } from '../components/SelfieCapture'
 import { ReactionTime } from '../components/ReactionTime'
@@ -15,9 +15,6 @@ import {
   type BehavioralProfile,
 } from '../hooks/useBehavioral'
 
-// Configurable composite score threshold (default 0.75)
-const PAYMENT_THRESHOLD = Number(import.meta.env.VITE_PAYMENT_THRESHOLD ?? 0.75)
-const REVIEW_THRESHOLD = 0.6
 const MAX_ATTEMPTS = 3
 
 type Step =
@@ -39,12 +36,12 @@ const MONTHS = [
 ]
 
 /**
- * Behavioral score — mean of every signal that returned a usable measurement.
+ * Behavioral score â€” mean of every signal that returned a usable measurement.
  *
- * - Gyroscope std (rad/s) — humans micro-tremor > 0.05, bots ~ 0.
- * - Accelerometer magnitude std (m/s^2) — humans hand variation > 0.1.
- * - Inter-tap CV (std/mean) — humans 0.15+, bots near-zero.
- * - Touch pressure variance — humans variable, emulators fixed.
+ * - Gyroscope std (rad/s) â€” humans micro-tremor > 0.05, bots ~ 0.
+ * - Accelerometer magnitude std (m/s^2) â€” humans hand variation > 0.1.
+ * - Inter-tap CV (std/mean) â€” humans 0.15+, bots near-zero.
+ * - Touch pressure variance â€” humans variable, emulators fixed.
  *
  * If no sensor produced data (desktop without taps, locked-down browser),
  * fall back to a low "prior" that distinguishes a touch device from a
@@ -55,12 +52,12 @@ function behavioralScoreFromProfile(p: BehavioralProfile): number {
 
   const gyroStd = p.motion.rotation_rate?.mag_std
   if (gyroStd !== undefined && gyroStd > 0) {
-    scores.push(Math.min(1, gyroStd * 20))
+    scores.push(Math.min(1, gyroStd / 2.0))
   }
 
   const accelStd = p.motion.accel_gravity?.mag_std
   if (accelStd !== undefined && accelStd > 0) {
-    scores.push(Math.min(1, accelStd * 10))
+    scores.push(Math.min(1, accelStd / 20.0))
   }
 
   const tapInterMean = p.touch.inter_tap_ms_mean
@@ -77,21 +74,6 @@ function behavioralScoreFromProfile(p: BehavioralProfile): number {
   return scores.reduce((a, b) => a + b, 0) / scores.length
 }
 
-interface Composite {
-  faceScore: number
-  cognitiveScore: number
-  composite: number
-  similarity: number
-  reactionMs: number
-}
-
-// Reaction time -> cognitive score normalisation:
-// 250 ms -> ~1.0 ; 800 ms -> ~0.0
-function reactionToScore(ms: number): number {
-  const score = (800 - ms) / 500
-  return Math.max(0, Math.min(1, score))
-}
-
 const COPY: Record<Decision, { en: string; zu: string; xh: string; sub: string }> = {
   APPROVED: {
     en: 'Payment approved',
@@ -106,9 +88,9 @@ const COPY: Record<Decision, { en: string; zu: string; xh: string; sub: string }
     sub: 'An agent will validate this request shortly.',
   },
   REJECTED: {
-    en: 'Verification failed — please try again',
-    zu: 'Ukuqinisekiswa kuhlulekile — sicela uzame futhi',
-    xh: 'Uqinisekiso aluphumelelanga — nceda uzame kwakhona',
+    en: 'Verification failed â€” please try again',
+    zu: 'Ukuqinisekiswa kuhlulekile â€” sicela uzame futhi',
+    xh: 'Uqinisekiso aluphumelelanga â€” nceda uzame kwakhona',
     sub: 'Make sure your face is well lit and clearly visible.',
   },
   MANUAL_REVIEW: {
@@ -120,10 +102,10 @@ const COPY: Record<Decision, { en: string; zu: string; xh: string; sub: string }
 }
 
 const TONE: Record<Decision, { color: string; bg: string; border: string; glyph: string }> = {
-  APPROVED:      { color: '#16a34a', bg: 'rgba(34,197,94,0.10)',  border: 'rgba(34,197,94,0.45)',  glyph: '✓' },
+  APPROVED:      { color: '#16a34a', bg: 'rgba(34,197,94,0.10)',  border: 'rgba(34,197,94,0.45)',  glyph: 'âœ“' },
   REVIEW:        { color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.45)', glyph: '!' },
-  REJECTED:      { color: '#ef4444', bg: 'rgba(239,68,68,0.10)',  border: 'rgba(239,68,68,0.45)',  glyph: '×' },
-  MANUAL_REVIEW: { color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.45)', glyph: '⌛' },
+  REJECTED:      { color: '#ef4444', bg: 'rgba(239,68,68,0.10)',  border: 'rgba(239,68,68,0.45)',  glyph: 'Ã—' },
+  MANUAL_REVIEW: { color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.45)', glyph: 'âŒ›' },
 }
 
 const inputStyle: React.CSSProperties = {
@@ -146,7 +128,7 @@ export function PaymentConfirm() {
   const [month, setMonth] = useState('')
   const [year, setYear] = useState(new Date().getFullYear().toString())
   const [employer, setEmployer] = useState('')
-  const [similarity, setSimilarity] = useState<number | null>(null)
+  const [, setSimilarity] = useState<number | null>(null)
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [attempts, setAttempts] = useState(0)
   const [decision, setDecision] = useState<Decision | null>(null)
@@ -167,18 +149,12 @@ export function PaymentConfirm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const decide = useCallback((c: Composite): Decision => {
-    if (c.composite >= PAYMENT_THRESHOLD) return 'APPROVED'
-    if (c.composite >= REVIEW_THRESHOLD) return 'REVIEW'
-    return 'REJECTED'
-  }, [])
-
   const handleIdentity = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     if (!firstName.trim() || !lastName.trim()) return
     if (lookupBusy) return
 
-    // First user gesture — request iOS motion permission
+    // First user gesture â€” request iOS motion permission
     try { await requestMotionPermission() } catch { /* user denied or unsupported */ }
 
     // Block the flow if no enrollment exists
@@ -265,49 +241,47 @@ export function PaymentConfirm() {
     setStep('reaction')
   }, [voice, firstName, lastName])
 
-  const handleReactionDone = useCallback((avgMs: number) => {
+  const handleReactionDone = useCallback(async (avgMs: number) => {
     setStep('computing')
-    const faceScore = (similarity ?? 0) / 100
-    const cognitiveScore = reactionToScore(avgMs)
-    // Weighted composite: face is the primary identity signal (70%),
-    // cognitive presence is a liveness cue (30%).
-    const compositeScore = 0.7 * faceScore + 0.3 * cognitiveScore
-    const c: Composite = {
-      faceScore,
-      cognitiveScore,
-      composite: compositeScore,
-      similarity: similarity ?? 0,
-      reactionMs: avgMs,
-    }
     const nextAttempts = attempts + 1
     setAttempts(nextAttempts)
 
-    let d = decide(c)
-    if (d === 'REJECTED' && nextAttempts >= MAX_ATTEMPTS) {
-      d = 'MANUAL_REVIEW'
+    // Compute behavioral score on the client (sensors only live here)
+    let behavioralScore = 0
+    try {
+      const profile = behavioral.stop()
+      behavioralScore = behavioralScoreFromProfile(profile)
+    } catch {
+      behavioralScore = 0
     }
-    setDecision(d)
-    setStep('decision')
 
-    // Fire-and-forget: ship vocal + behavioral + reflex signals to the backend
-    if (studentId) {
-      let behavioralScore = 0
-      try {
-        const profile = behavioral.stop()
-        behavioralScore = behavioralScoreFromProfile(profile)
-      } catch {
-        behavioralScore = 0
-      }
-      void sendAuthPaymentSignals({
+    // Backend computes the final decision (single source of truth)
+    if (!studentId) {
+      // No enrollment session â€” fail safe to REVIEW
+      setDecision('REVIEW')
+      setStep('decision')
+      return
+    }
+
+    try {
+      const result = await sendAuthPaymentSignals({
         student_id: studentId,
         vocal_score: vocalQuality ?? 0,
         behavioral_score: behavioralScore,
         reaction_ms: avgMs,
-      }).catch((err) => {
-        console.warn('[auth-payment-signals] failed', err)
       })
+      let d: Decision = result.decision
+      if (d === 'REJECTED' && nextAttempts >= MAX_ATTEMPTS) {
+        d = 'MANUAL_REVIEW'
+      }
+      console.log('[PAYGUARD] backend decision', { decision: d, trust_score: result.trust_score, detail: result.detail })
+      setDecision(d)
+    } catch (err) {
+      console.warn('[auth-payment-signals] failed â€” falling back to REVIEW', err)
+      setDecision('REVIEW')
     }
-  }, [similarity, attempts, decide, studentId, vocalQuality, behavioral])
+    setStep('decision')
+  }, [attempts, studentId, vocalQuality, behavioral])
 
   const retry = useCallback(() => {
     setSimilarity(null)
@@ -349,7 +323,7 @@ export function PaymentConfirm() {
 
   return (
     <div className="page">
-      <div className="logo" style={{ cursor: 'pointer' }} onClick={() => nav('/')}>← PAYGUARD</div>
+      <div className="logo" style={{ cursor: 'pointer' }} onClick={() => nav('/')}>â† PAYGUARD</div>
 
       <div className="progress-bar" style={{ width: '100%', maxWidth: 440 }}>
         <div className="progress-fill" style={{ width: `${progressPct}%` }} />
@@ -357,7 +331,7 @@ export function PaymentConfirm() {
 
       {step === 'identity' && (
         <>
-          <div className="badge badge-green">Step 1 — Identity & Payment</div>
+          <div className="badge badge-green">Step 1 â€” Identity & Payment</div>
           <h1 className="step-title">Confirm Payment</h1>
           <p className="step-sub">
             Enter your details and the payment information below.
@@ -432,13 +406,13 @@ export function PaymentConfirm() {
                 value={employer}
                 onChange={(e) => setEmployer(e.target.value)}
                 required
-                placeholder="ABC Construction — Site B"
+                placeholder="ABC Construction â€” Site B"
                 style={inputStyle}
               />
             </div>
             <button className="btn btn-primary" type="submit"
               disabled={!firstName.trim() || !lastName.trim() || lookupBusy}>
-              {lookupBusy ? 'Looking up...' : 'Continue →'}
+              {lookupBusy ? 'Looking up...' : 'Continue â†’'}
             </button>
           </form>
         </>
@@ -453,11 +427,11 @@ export function PaymentConfirm() {
             {firstName.trim()} {lastName.trim()} is not enrolled yet.
           </h1>
           <p className="step-sub">
-            Please complete enrolment first — we need a registered face and
+            Please complete enrolment first â€” we need a registered face and
             voice profile to verify identity before releasing payment.
           </p>
           <button className="btn btn-primary" onClick={() => nav('/enroll')}>
-            Go to enrolment →
+            Go to enrolment â†’
           </button>
           <button className="btn btn-outline" style={{ marginTop: 12 }} onClick={() => setStep('identity')}>
             Try a different name
@@ -467,7 +441,7 @@ export function PaymentConfirm() {
 
       {step === 'selfie' && (
         <>
-          <div className="badge badge-green">Step 2 of 4 — Live photo</div>
+          <div className="badge badge-green">Step 2 of 4 â€” Live photo</div>
           <h1 className="step-title">Face Verification</h1>
           <p className="step-sub">
             Center your face in the frame and capture. We compare it to your
@@ -479,7 +453,7 @@ export function PaymentConfirm() {
 
       {step === 'vocal' && (
         <>
-          <div className="badge badge-green">Step 3 of 4 — Voice sample</div>
+          <div className="badge badge-green">Step 3 of 4 â€” Voice sample</div>
           <h1 className="step-title">Voice Verification</h1>
           <p className="step-sub">
             Hold the button and read this short sentence aloud for 3 seconds:
@@ -488,7 +462,7 @@ export function PaymentConfirm() {
           </p>
           {vocalError && (
             <div className="card" style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>
-              {vocalError} — continuing without voice.
+              {vocalError} â€” continuing without voice.
             </div>
           )}
           {voice.isRecording ? (
@@ -507,7 +481,7 @@ export function PaymentConfirm() {
               onClick={handleVocal}
               disabled={voice.isRecording}
             >
-              Start voice sample →
+              Start voice sample â†’
             </button>
           )}
         </>
@@ -515,7 +489,7 @@ export function PaymentConfirm() {
 
       {step === 'reaction' && (
         <>
-          <div className="badge badge-green">Step 4 of 4 — Quick tap test</div>
+          <div className="badge badge-green">Step 4 of 4 â€” Quick tap test</div>
           <h1 className="step-title">Reaction Time</h1>
           <p className="step-sub">
             Tap the button as fast as you can when it turns yellow. 5 short
@@ -528,7 +502,7 @@ export function PaymentConfirm() {
       {step === 'computing' && (
         <>
           <h1 className="step-title">Computing decision...</h1>
-          <div style={{ marginTop: 40, color: 'var(--green)', fontSize: 48 }}>⬡</div>
+          <div style={{ marginTop: 40, color: 'var(--green)', fontSize: 48 }}>â¬¡</div>
         </>
       )}
 

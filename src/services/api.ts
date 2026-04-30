@@ -1,4 +1,4 @@
-const API = import.meta.env.VITE_API_URL || 'https://hybrid-vector-api.fly.dev'
+﻿const API = import.meta.env.VITE_API_URL || 'https://hybrid-vector-api.fly.dev'
 // Require explicit env config (no silent fallbacks in production)
 const TENANT = import.meta.env.VITE_TENANT_ID
 const API_KEY = import.meta.env.VITE_HV_API_KEY
@@ -45,10 +45,10 @@ export async function enrollWorker(payload: {
     selfie_b64: stripDataUrlPrefix(payload.selfie_b64),
     tenant_id: TENANT,
   }
-  // Omit email if empty — backend Zod schema uses .email().optional()
+  // Omit email if empty â€” backend Zod schema uses .email().optional()
   // which rejects "" but accepts undefined
   if (!payload.email) delete body.email
-  const res = await fetch(`${API}/edguard/enroll`, {
+  const res = await fetch(`${API}/payguard/enroll`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(body),
@@ -65,7 +65,7 @@ export async function verifyWorker(payload: {
   if (isSecureCollectMode()) {
     throw new Error('Secure collection mode is active: verification blocked (go back online).')
   }
-  const res = await fetch(`${API}/edguard/verify`, {
+  const res = await fetch(`${API}/payguard/verify`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({
@@ -88,7 +88,7 @@ export async function lookupEnrollment(payload: {
   first_name: string
   last_name: string
 }): Promise<{ found: boolean; student_id?: string; first_name?: string }> {
-  const res = await fetch(`${API}/edguard/lookup`, {
+  const res = await fetch(`${API}/payguard/lookup`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ ...payload, tenant_id: TENANT }),
@@ -98,7 +98,7 @@ export async function lookupEnrollment(payload: {
 }
 
 /**
- * Real voice biometric verify — sends a freshly extracted 192-dim MFCC
+ * Real voice biometric verify â€” sends a freshly extracted 192-dim MFCC
  * embedding to the backend, which compares it (cosine sim) against the
  * embedding stored at enrollment time for (first_name, last_name).
  *
@@ -109,7 +109,7 @@ export async function vocalVerify(payload: {
   last_name: string
   vocal_embedding: number[]
 }): Promise<{ vocal_score: number; matched: boolean; reason?: string }> {
-  const res = await fetch(`${API}/edguard/vocal-verify`, {
+  const res = await fetch(`${API}/payguard/vocal-verify`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ ...payload, tenant_id: TENANT }),
@@ -119,7 +119,7 @@ export async function vocalVerify(payload: {
 }
 
 /**
- * /auth-payment enrichment — sent fire-and-forget after the reflex test.
+ * /auth-payment enrichment â€” sent fire-and-forget after the reflex test.
  * The decision is computed client-side; this call lets the backend persist
  * vocal/behavioral/reflex scores and re-emit a richer event to HCS-U7.
  */
@@ -128,8 +128,12 @@ export async function sendAuthPaymentSignals(payload: {
   vocal_score: number
   behavioral_score: number
   reaction_ms: number
-}): Promise<{ success: boolean }> {
-  const res = await fetch(`${API}/edguard/auth-payment-signals`, {
+}): Promise<{
+  decision: 'APPROVED' | 'REVIEW' | 'REJECTED'
+  trust_score: number
+  detail: { facial: number; vocal: number; reflex: number; behavioral: number }
+}> {
+  const res = await fetch(`${API}/payguard/auth-payment-signals`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ ...payload, tenant_id: TENANT }),
