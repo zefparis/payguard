@@ -23,7 +23,6 @@ const MAX_ATTEMPTS = 3
 type Step =
   | 'identity'
   | 'not-enrolled'
-  | 'details'
   | 'selfie'
   | 'vocal'
   | 'reaction'
@@ -190,11 +189,13 @@ export function PaymentConfirm() {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
       })
+      console.log('[PAYGUARD-LOOKUP] result:', lookup)
       if (!lookup.found) {
         setStep('not-enrolled')
         return
       }
     } catch (err) {
+      console.error('[PAYGUARD-LOOKUP] error:', err)
       setErrorMsg(err instanceof Error ? err.message : 'Profile lookup failed')
       return
     } finally {
@@ -202,14 +203,8 @@ export function PaymentConfirm() {
     }
 
     void behavioral.start()
-    setStep('details')
-  }, [firstName, lastName, behavioral, lookupBusy])
-
-  const handleDetails = useCallback((e: React.FormEvent) => {
-    e.preventDefault()
-    if (!amount || !month || !year) return
     setStep('selfie')
-  }, [amount, month, year])
+  }, [firstName, lastName, behavioral, lookupBusy])
 
   const handleSelfie = useCallback(async (b64: string) => {
     setErrorMsg('')
@@ -341,7 +336,6 @@ export function PaymentConfirm() {
     switch (step) {
       case 'identity':     return 0
       case 'not-enrolled': return 0
-      case 'details':      return 12
       case 'selfie':       return 25
       case 'vocal':        return 50
       case 'reaction':     return 70
@@ -362,11 +356,10 @@ export function PaymentConfirm() {
 
       {step === 'identity' && (
         <>
-          <div className="badge badge-green">Step 1 — Identity</div>
+          <div className="badge badge-green">Step 1 — Identity & Payment</div>
           <h1 className="step-title">Confirm Payment</h1>
           <p className="step-sub">
-            Enter your first and last name as registered with the
-            disbursement programme.
+            Enter your details and the payment information below.
           </p>
           {errorMsg && (
             <div className="card" style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>
@@ -396,41 +389,6 @@ export function PaymentConfirm() {
                 />
               </div>
             </div>
-            <button className="btn btn-primary" type="submit"
-              disabled={!firstName.trim() || !lastName.trim() || lookupBusy}>
-              {lookupBusy ? 'Looking up...' : 'Continue →'}
-            </button>
-          </form>
-        </>
-      )}
-
-      {step === 'not-enrolled' && (
-        <>
-          <div className="badge" style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.25)', margin: '0 auto 16px' }}>
-            No profile found
-          </div>
-          <h1 className="step-title">
-            {firstName.trim()} {lastName.trim()} is not enrolled yet.
-          </h1>
-          <p className="step-sub">
-            Please complete enrolment first — we need a registered face and
-            voice profile to verify identity before releasing payment.
-          </p>
-          <button className="btn btn-primary" onClick={() => nav('/enroll')}>
-            Go to enrolment →
-          </button>
-          <button className="btn btn-outline" style={{ marginTop: 12 }} onClick={() => setStep('identity')}>
-            Try a different name
-          </button>
-        </>
-      )}
-
-      {step === 'details' && (
-        <>
-          <div className="badge badge-green">Step 2 — Payment Details</div>
-          <h1 className="step-title">Payment Details</h1>
-          <p className="step-sub">Amount, pay period, employer/site.</p>
-          <form onSubmit={handleDetails} style={{ width: '100%' }}>
             <div className="field">
               <label>Amount (ZAR) *</label>
               <input
@@ -477,16 +435,38 @@ export function PaymentConfirm() {
                 style={inputStyle}
               />
             </div>
-            <button className="btn btn-primary" type="submit">
-              Continue →
+            <button className="btn btn-primary" type="submit"
+              disabled={!firstName.trim() || !lastName.trim() || lookupBusy}>
+              {lookupBusy ? 'Looking up...' : 'Continue →'}
             </button>
           </form>
         </>
       )}
 
+      {step === 'not-enrolled' && (
+        <>
+          <div className="badge" style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.25)', margin: '0 auto 16px' }}>
+            No profile found
+          </div>
+          <h1 className="step-title">
+            {firstName.trim()} {lastName.trim()} is not enrolled yet.
+          </h1>
+          <p className="step-sub">
+            Please complete enrolment first — we need a registered face and
+            voice profile to verify identity before releasing payment.
+          </p>
+          <button className="btn btn-primary" onClick={() => nav('/enroll')}>
+            Go to enrolment →
+          </button>
+          <button className="btn btn-outline" style={{ marginTop: 12 }} onClick={() => setStep('identity')}>
+            Try a different name
+          </button>
+        </>
+      )}
+
       {step === 'selfie' && (
         <>
-          <div className="badge badge-green">Step 3 of 5 — Live photo</div>
+          <div className="badge badge-green">Step 2 of 4 — Live photo</div>
           <h1 className="step-title">Face Verification</h1>
           <p className="step-sub">
             Center your face in the frame and capture. We compare it to your
@@ -498,7 +478,7 @@ export function PaymentConfirm() {
 
       {step === 'vocal' && (
         <>
-          <div className="badge badge-green">Step 4 of 5 — Voice sample</div>
+          <div className="badge badge-green">Step 3 of 4 — Voice sample</div>
           <h1 className="step-title">Voice Verification</h1>
           <p className="step-sub">
             Hold the button and read this short sentence aloud for 3 seconds:
@@ -534,7 +514,7 @@ export function PaymentConfirm() {
 
       {step === 'reaction' && (
         <>
-          <div className="badge badge-green">Step 5 of 5 — Quick tap test</div>
+          <div className="badge badge-green">Step 4 of 4 — Quick tap test</div>
           <h1 className="step-title">Reaction Time</h1>
           <p className="step-sub">
             Tap the button as fast as you can when it turns yellow. 5 short
