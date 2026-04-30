@@ -5,6 +5,10 @@ const API_KEY = import.meta.env.VITE_HV_API_KEY
 
 import { isSecureCollectMode } from './secureMode'
 
+function stripDataUrlPrefix(b64: string): string {
+  return b64.replace(/^data:image\/\w+;base64,/, '')
+}
+
 const headers = () => {
   if (!API_KEY) throw new Error('Missing VITE_HV_API_KEY')
   if (!TENANT) throw new Error('Missing VITE_TENANT_ID')
@@ -19,7 +23,7 @@ export async function enrollWorker(payload: {
   selfie_b64: string
   first_name: string
   last_name: string
-  email: string
+  email?: string
   tenant_id: string
   cognitive_baseline?: {
     stroop_score?: number
@@ -36,10 +40,18 @@ export async function enrollWorker(payload: {
   if (isSecureCollectMode()) {
     throw new Error('Secure collection mode is active: upload blocked (go back online to send).')
   }
+  const body: Record<string, unknown> = {
+    ...payload,
+    selfie_b64: stripDataUrlPrefix(payload.selfie_b64),
+    tenant_id: TENANT,
+  }
+  // Omit email if empty — backend Zod schema uses .email().optional()
+  // which rejects "" but accepts undefined
+  if (!payload.email) delete body.email
   const res = await fetch(`${API}/edguard/enroll`, {
     method: 'POST',
     headers: headers(),
-    body: JSON.stringify({ ...payload, tenant_id: TENANT }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(`Enroll failed: ${res.status}`)
   return res.json()
@@ -56,7 +68,11 @@ export async function verifyWorker(payload: {
   const res = await fetch(`${API}/edguard/verify`, {
     method: 'POST',
     headers: headers(),
-    body: JSON.stringify({ ...payload, tenant_id: TENANT }),
+    body: JSON.stringify({
+      ...payload,
+      selfie_b64: stripDataUrlPrefix(payload.selfie_b64),
+      tenant_id: TENANT,
+    }),
   })
   if (!res.ok) throw new Error(`Verify failed: ${res.status}`)
   return res.json()

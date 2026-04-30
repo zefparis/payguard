@@ -423,7 +423,7 @@ export function Enroll() {
       const res = await enrollWorker({
         first_name: data.firstName,
         last_name: data.lastName,
-        email: data.email || '',
+        email: data.email || undefined,
         selfie_b64: data.selfieB64,
         tenant_id: tenantId,
         cognitive_baseline: payloadBaseline,
