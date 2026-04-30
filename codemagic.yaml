@@ -30,8 +30,8 @@ workflows:
       - name: Fix Podfile deployment target
         script: |
           set -euo pipefail
-          sed -i "s/platform :ios, '[0-9.]*/platform :ios, '15.0/g" ios/App/Podfile
-          cat ios/App/Podfile | grep platform
+          sed -i '' "s/platform :ios, '[0-9.]*'/platform :ios, '15.0'/g" ios/App/Podfile
+          grep platform ios/App/Podfile
 
       - name: Capacitor sync
         script: |
@@ -75,6 +75,7 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: false
+        submit_to_app_store: false
 
       email:
         recipients:
