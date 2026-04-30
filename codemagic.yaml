@@ -12,8 +12,6 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.iasolution.payguard
-        provisioning_profile_type: APP_STORE
-        automatically_manage_signing: true
       vars:
         XCODE_WORKSPACE: "ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
