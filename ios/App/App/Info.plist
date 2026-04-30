@@ -53,5 +53,7 @@
 	<string>PayGuard SA analyzes your voice patterns to confirm your identity before processing payments.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>PayGuard SA uses motion sensors to detect behavioral patterns for fraud prevention.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>PayGuard SA may access your photo library to let you upload a profile photo for identity verification.</string>
 </dict>
 </plist>
