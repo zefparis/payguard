@@ -1,0 +1,80 @@
+workflows:
+  ios-workflow:
+    name: PayGuard SA iOS
+    max_build_duration: 60
+
+    integrations:
+      app_store_connect: Codemagic
+
+    environment:
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.iasolution.payguard
+      vars:
+        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+
+    scripts:
+      - name: Install dependencies
+        script: |
+          set -euo pipefail
+          npm install
+
+      - name: Build web assets
+        script: |
+          set -euo pipefail
+          npm run build
+
+      - name: Capacitor sync
+        script: |
+          set -euo pipefail
+          npx cap sync ios
+
+      - name: Install pods
+        script: |
+          set -euo pipefail
+          cd ios/App
+          pod install
+
+      - name: Configure signing
+        script: |
+          set -euo pipefail
+          keychain initialize
+          keychain add-certificates
+          xcode-project use-profiles
+          security find-identity -v -p codesigning
+
+      - name: Force iOS deployment target
+        script: |
+          set -euo pipefail
+          cd ios/App
+          sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 14.0;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g' App.xcodeproj/project.pbxproj
+          sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g' App.xcodeproj/project.pbxproj
+          grep -n "IPHONEOS_DEPLOYMENT_TARGET" App.xcodeproj/project.pbxproj
+
+      - name: Build IPA
+        script: |
+          set -euo pipefail
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: false
+
+      email:
+        recipients:
+          - contact@ia-solution.fr
+        notify:
+          success: true
+          failure: true
