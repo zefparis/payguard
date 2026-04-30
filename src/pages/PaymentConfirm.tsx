@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SelfieCapture } from '../components/SelfieCapture'
 import { ReactionTime } from '../components/ReactionTime'
@@ -36,35 +36,42 @@ const MONTHS = [
 ]
 
 /**
- * Behavioral score â€” mean of every signal that returned a usable measurement.
+ * Behavioral score — mean of every signal that returned a usable measurement.
  *
- * - Gyroscope std (rad/s) â€” humans micro-tremor > 0.05, bots ~ 0.
- * - Accelerometer magnitude std (m/s^2) â€” humans hand variation > 0.1.
- * - Inter-tap CV (std/mean) â€” humans 0.15+, bots near-zero.
- * - Touch pressure variance â€” humans variable, emulators fixed.
+ * - Gyroscope std (rad/s) — humans micro-tremor > 0.05, bots ~ 0.
+ * - Accelerometer magnitude std (m/s^2) — humans hand variation > 0.1.
+ * - Inter-tap CV (std/mean) — humans 0.15+, bots near-zero.
+ * - Touch pressure variance — humans variable, emulators fixed.
  *
  * If no sensor produced data (desktop without taps, locked-down browser),
  * fall back to a low "prior" that distinguishes a touch device from a
  * vanilla desktop / headless.
  */
+/**
+ * Sigmoid normalization — maps a positive value to (0, 1) with 0.5 at `mid`.
+ * Steepness k=3 gives a smooth S-curve that avoids saturation.
+ */
+const sigmoid = (v: number, mid: number) =>
+  1 / (1 + Math.exp(-3 * (v - mid) / mid))
+
 function behavioralScoreFromProfile(p: BehavioralProfile): number {
   const scores: number[] = []
 
   const gyroStd = p.motion.rotation_rate?.mag_std
   if (gyroStd !== undefined && gyroStd > 0) {
-    scores.push(Math.min(1, gyroStd / 2.0))
+    scores.push(sigmoid(gyroStd, 1.0))    // 0.5 at 1.0 rad/s
   }
 
   const accelStd = p.motion.accel_gravity?.mag_std
   if (accelStd !== undefined && accelStd > 0) {
-    scores.push(Math.min(1, accelStd / 20.0))
+    scores.push(sigmoid(accelStd, 10.0))  // 0.5 at 10.0 m/s²
   }
 
   const tapInterMean = p.touch.inter_tap_ms_mean
   const tapDurMean = p.touch.tap_duration_ms_mean
   if (tapInterMean > 0 && tapDurMean > 0) {
-    // approximate tap CV from available stats
-    scores.push(Math.min(1, (tapInterMean / Math.max(1, tapDurMean)) * 0.3))
+    const tapCV = tapInterMean / Math.max(1, tapDurMean)
+    scores.push(sigmoid(tapCV, 2.0))      // 0.5 at CV=2
   }
 
   if (scores.length === 0) {
@@ -88,9 +95,9 @@ const COPY: Record<Decision, { en: string; zu: string; xh: string; sub: string }
     sub: 'An agent will validate this request shortly.',
   },
   REJECTED: {
-    en: 'Verification failed â€” please try again',
-    zu: 'Ukuqinisekiswa kuhlulekile â€” sicela uzame futhi',
-    xh: 'Uqinisekiso aluphumelelanga â€” nceda uzame kwakhona',
+    en: 'Verification failed — please try again',
+    zu: 'Ukuqinisekiswa kuhlulekile — sicela uzame futhi',
+    xh: 'Uqinisekiso aluphumelelanga — nceda uzame kwakhona',
     sub: 'Make sure your face is well lit and clearly visible.',
   },
   MANUAL_REVIEW: {
@@ -102,10 +109,10 @@ const COPY: Record<Decision, { en: string; zu: string; xh: string; sub: string }
 }
 
 const TONE: Record<Decision, { color: string; bg: string; border: string; glyph: string }> = {
-  APPROVED:      { color: '#16a34a', bg: 'rgba(34,197,94,0.10)',  border: 'rgba(34,197,94,0.45)',  glyph: 'âœ“' },
+  APPROVED:      { color: '#16a34a', bg: 'rgba(34,197,94,0.10)',  border: 'rgba(34,197,94,0.45)',  glyph: '✔' },
   REVIEW:        { color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.45)', glyph: '!' },
-  REJECTED:      { color: '#ef4444', bg: 'rgba(239,68,68,0.10)',  border: 'rgba(239,68,68,0.45)',  glyph: 'Ã—' },
-  MANUAL_REVIEW: { color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.45)', glyph: 'âŒ›' },
+  REJECTED:      { color: '#ef4444', bg: 'rgba(239,68,68,0.10)',  border: 'rgba(239,68,68,0.45)',  glyph: '×' },
+  MANUAL_REVIEW: { color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.45)', glyph: '⏳' },
 }
 
 const inputStyle: React.CSSProperties = {
@@ -154,7 +161,7 @@ export function PaymentConfirm() {
     if (!firstName.trim() || !lastName.trim()) return
     if (lookupBusy) return
 
-    // First user gesture â€” request iOS motion permission
+    // First user gesture — request iOS motion permission
     try { await requestMotionPermission() } catch { /* user denied or unsupported */ }
 
     // Block the flow if no enrollment exists
@@ -251,13 +258,21 @@ export function PaymentConfirm() {
     try {
       const profile = behavioral.stop()
       behavioralScore = behavioralScoreFromProfile(profile)
+      console.log('[BEHAVIORAL DEBUG]', {
+        gyroStd: profile.motion.rotation_rate?.mag_std,
+        accelStd: profile.motion.accel_gravity?.mag_std,
+        motionSamples: profile.motion.samples,
+        tapCV: profile.touch.inter_tap_ms_mean / Math.max(1, profile.touch.tap_duration_ms_mean),
+        taps: profile.touch.taps,
+        finalScore: behavioralScore,
+      })
     } catch {
       behavioralScore = 0
     }
 
     // Backend computes the final decision (single source of truth)
     if (!studentId) {
-      // No enrollment session â€” fail safe to REVIEW
+      // No enrollment session — fail safe to REVIEW
       setDecision('REVIEW')
       setStep('decision')
       return
@@ -277,7 +292,7 @@ export function PaymentConfirm() {
       console.log('[PAYGUARD] backend decision', { decision: d, trust_score: result.trust_score, detail: result.detail })
       setDecision(d)
     } catch (err) {
-      console.warn('[auth-payment-signals] failed â€” falling back to REVIEW', err)
+      console.warn('[auth-payment-signals] failed — falling back to REVIEW', err)
       setDecision('REVIEW')
     }
     setStep('decision')
@@ -323,7 +338,7 @@ export function PaymentConfirm() {
 
   return (
     <div className="page">
-      <div className="logo" style={{ cursor: 'pointer' }} onClick={() => nav('/')}>â† PAYGUARD</div>
+      <div className="logo" style={{ cursor: 'pointer' }} onClick={() => nav('/')}>← PAYGUARD</div>
 
       <div className="progress-bar" style={{ width: '100%', maxWidth: 440 }}>
         <div className="progress-fill" style={{ width: `${progressPct}%` }} />
@@ -331,7 +346,7 @@ export function PaymentConfirm() {
 
       {step === 'identity' && (
         <>
-          <div className="badge badge-green">Step 1 â€” Identity & Payment</div>
+          <div className="badge badge-green">Step 1 — Identity & Payment</div>
           <h1 className="step-title">Confirm Payment</h1>
           <p className="step-sub">
             Enter your details and the payment information below.
@@ -406,13 +421,13 @@ export function PaymentConfirm() {
                 value={employer}
                 onChange={(e) => setEmployer(e.target.value)}
                 required
-                placeholder="ABC Construction â€” Site B"
+                placeholder="ABC Construction — Site B"
                 style={inputStyle}
               />
             </div>
             <button className="btn btn-primary" type="submit"
               disabled={!firstName.trim() || !lastName.trim() || lookupBusy}>
-              {lookupBusy ? 'Looking up...' : 'Continue â†’'}
+              {lookupBusy ? 'Looking up...' : 'Continue →'}
             </button>
           </form>
         </>
@@ -427,11 +442,11 @@ export function PaymentConfirm() {
             {firstName.trim()} {lastName.trim()} is not enrolled yet.
           </h1>
           <p className="step-sub">
-            Please complete enrolment first â€” we need a registered face and
+            Please complete enrolment first — we need a registered face and
             voice profile to verify identity before releasing payment.
           </p>
           <button className="btn btn-primary" onClick={() => nav('/enroll')}>
-            Go to enrolment â†’
+            Go to enrolment →
           </button>
           <button className="btn btn-outline" style={{ marginTop: 12 }} onClick={() => setStep('identity')}>
             Try a different name
@@ -441,7 +456,7 @@ export function PaymentConfirm() {
 
       {step === 'selfie' && (
         <>
-          <div className="badge badge-green">Step 2 of 4 â€” Live photo</div>
+          <div className="badge badge-green">Step 2 of 4 — Live photo</div>
           <h1 className="step-title">Face Verification</h1>
           <p className="step-sub">
             Center your face in the frame and capture. We compare it to your
@@ -453,7 +468,7 @@ export function PaymentConfirm() {
 
       {step === 'vocal' && (
         <>
-          <div className="badge badge-green">Step 3 of 4 â€” Voice sample</div>
+          <div className="badge badge-green">Step 3 of 4 — Voice sample</div>
           <h1 className="step-title">Voice Verification</h1>
           <p className="step-sub">
             Hold the button and read this short sentence aloud for 3 seconds:
@@ -462,7 +477,7 @@ export function PaymentConfirm() {
           </p>
           {vocalError && (
             <div className="card" style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>
-              {vocalError} â€” continuing without voice.
+              {vocalError} — continuing without voice.
             </div>
           )}
           {voice.isRecording ? (
@@ -481,7 +496,7 @@ export function PaymentConfirm() {
               onClick={handleVocal}
               disabled={voice.isRecording}
             >
-              Start voice sample â†’
+              Start voice sample →
             </button>
           )}
         </>
@@ -489,7 +504,7 @@ export function PaymentConfirm() {
 
       {step === 'reaction' && (
         <>
-          <div className="badge badge-green">Step 4 of 4 â€” Quick tap test</div>
+          <div className="badge badge-green">Step 4 of 4 — Quick tap test</div>
           <h1 className="step-title">Reaction Time</h1>
           <p className="step-sub">
             Tap the button as fast as you can when it turns yellow. 5 short
@@ -502,7 +517,7 @@ export function PaymentConfirm() {
       {step === 'computing' && (
         <>
           <h1 className="step-title">Computing decision...</h1>
-          <div style={{ marginTop: 40, color: 'var(--green)', fontSize: 48 }}>â¬¡</div>
+          <div style={{ marginTop: 40, color: 'var(--green)', fontSize: 48 }}>⬡</div>
         </>
       )}
 
