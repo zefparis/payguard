@@ -16,7 +16,8 @@ export function Results() {
   }, [])
 
   return (
-    <div style={styles.container}>
+    <div style={styles.page}>
+      <div style={styles.card}>
       <style>{`
         @keyframes springIn {
           0% { opacity: 0; transform: scale(0.3); }
@@ -87,19 +88,29 @@ export function Results() {
       >
         Get started
       </button>
+      </div>
     </div>
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: {
+  page: {
     minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#000',
+    padding: '24px 16px',
+  },
+  card: {
+    width: '100%',
+    maxWidth: 420,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: '32px 24px',
-    background: 'var(--system-background, #000)',
+    padding: '48px 32px',
+    background: '#0d1117',
+    borderRadius: 20,
   },
   iconCircle: {
     width: 96,
