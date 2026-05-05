@@ -399,7 +399,7 @@ export function SecureEnroll() {
       await idbDeleteSession(sessionId)
       window.localStorage.setItem('payguard-last-session-id', sessionId)
 
-      setState('TERMINE')
+      nav('/results')
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Upload failed')
       setState('ERREUR')

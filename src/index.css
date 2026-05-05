@@ -12,6 +12,17 @@
   --border: #1e2d45;
   --red: #ef4444;
   --amber: #f59e0b;
+  --system-background: #000;
+  --label: #fff;
+  --secondary-label: rgba(255,255,255,0.6);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --system-background: #fff;
+    --label: #000;
+    --secondary-label: rgba(60,60,67,0.6);
+  }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

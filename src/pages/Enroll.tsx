@@ -442,14 +442,7 @@ export function Enroll() {
       setSelfie(data.selfieB64)
       setCognitive(final)
 
-      nav('/results', {
-        state: {
-          faceScore: res.confidence,
-          reflexMs: final.reflexVelocityMs,
-          digitSpan: final.digitSpan ?? 0,
-          voiceScore: final.vocalAccuracy,
-        },
-      })
+      nav('/results')
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Enrollment upload failed')
       setStep('error')
