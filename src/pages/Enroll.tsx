@@ -9,8 +9,11 @@ import type { BehavioralController } from '../hooks/useBehavioral'
 import { useVoiceBiometrics } from '../hooks/useVoiceBiometrics'
 import { usePayGuardStore } from '../store/payguardStore'
 import { enrollWorker } from '../services/api'
+import { withRetry } from '../utils/retry'
 import { generateSessionKeypair, PQ_ALGORITHM, signProfile } from '../services/postQuantum'
 import { behavioralCollector, faceCollector, signalBus } from '../signal-engine'
+import { clamp01, rms, toMonoFloat32, resampleLinear } from '../lib/audio-utils'
+import { TENANT_ID, VOICE_DURATION_MS } from '../config'
 import type { CognitiveBaseline } from '../types'
 
 type Step = 'identity' | 'selfie' | 'stroop' | 'reflex' | 'voice' | 'digitspan' | 'uploading' | 'error'
@@ -54,54 +57,6 @@ const INITIAL_COLLECTED: CollectedEnrollment = {
   voiceBlob: null,
   voiceSamples: null,
   digitSpan: 0,
-}
-
-function clamp01(value: number) {
-  return Math.max(0, Math.min(1, value))
-}
-
-function rms(arr: Float32Array) {
-  let sum = 0
-  for (let i = 0; i < arr.length; i += 1) {
-    sum += arr[i] * arr[i]
-  }
-  return arr.length ? Math.sqrt(sum / arr.length) : 0
-}
-
-function toMonoFloat32(audioBuffer: AudioBuffer) {
-  if (audioBuffer.numberOfChannels === 1) {
-    return audioBuffer.getChannelData(0)
-  }
-
-  const left = audioBuffer.getChannelData(0)
-  const right = audioBuffer.getChannelData(1)
-  const out = new Float32Array(audioBuffer.length)
-
-  for (let i = 0; i < out.length; i += 1) {
-    out[i] = (left[i] + right[i]) * 0.5
-  }
-
-  return out
-}
-
-function resampleLinear(input: Float32Array, inputRate: number, outputRate: number) {
-  if (inputRate === outputRate) {
-    return input
-  }
-
-  const ratio = outputRate / inputRate
-  const outLen = Math.max(1, Math.floor(input.length * ratio))
-  const out = new Float32Array(outLen)
-
-  for (let i = 0; i < outLen; i += 1) {
-    const t = i / ratio
-    const i0 = Math.floor(t)
-    const i1 = Math.min(input.length - 1, i0 + 1)
-    const frac = t - i0
-    out[i] = input[i0] * (1 - frac) + input[i1] * frac
-  }
-
-  return out
 }
 
 async function recordVoiceCapture(durationMs: number, onProgress: (progress: number) => void) {
@@ -242,7 +197,7 @@ export function Enroll() {
   const [errorMsg, setErrorMsg] = useState('')
   const [isVoiceRecording, setIsVoiceRecording] = useState(false)
   const [voiceProgress, setVoiceProgress] = useState(0)
-  const [voiceCountdownMs, setVoiceCountdownMs] = useState(4000)
+  const [voiceCountdownMs, setVoiceCountdownMs] = useState(VOICE_DURATION_MS)
 
   const isCollectPhase = useMemo(
     () => ['identity', 'selfie', 'stroop', 'reflex', 'voice', 'digitspan'].includes(step),
@@ -294,7 +249,7 @@ export function Enroll() {
   const resetEnrollment = useCallback(() => {
     setErrorMsg('')
     setVoiceProgress(0)
-    setVoiceCountdownMs(4000)
+    setVoiceCountdownMs(VOICE_DURATION_MS)
     setIsVoiceRecording(false)
     setCollected(INITIAL_COLLECTED)
     setForm({
@@ -347,12 +302,12 @@ export function Enroll() {
     setErrorMsg('')
     setIsVoiceRecording(true)
     setVoiceProgress(0)
-    setVoiceCountdownMs(4000)
+    setVoiceCountdownMs(VOICE_DURATION_MS)
 
     try {
-      const capture = await recordVoiceCapture(4000, (progress) => {
+      const capture = await recordVoiceCapture(VOICE_DURATION_MS, (progress) => {
         setVoiceProgress(progress)
-        setVoiceCountdownMs(Math.max(0, 4000 - Math.round((progress / 100) * 4000)))
+        setVoiceCountdownMs(Math.max(0, VOICE_DURATION_MS - Math.round((progress / 100) * VOICE_DURATION_MS)))
       })
 
       setCollected(current => ({
@@ -419,15 +374,17 @@ export function Enroll() {
         pq_algorithm: PQ_ALGORITHM,
       }
 
-      const tenantId = import.meta.env.VITE_TENANT_ID
-      const res = await enrollWorker({
-        first_name: data.firstName,
-        last_name: data.lastName,
-        email: data.email || undefined,
-        selfie_b64: data.selfieB64,
-        tenant_id: tenantId,
-        cognitive_baseline: payloadBaseline,
-      })
+      const res = await withRetry(
+        () => enrollWorker({
+          first_name: data.firstName,
+          last_name: data.lastName,
+          email: data.email || undefined,
+          selfie_b64: data.selfieB64,
+          tenant_id: TENANT_ID,
+          cognitive_baseline: payloadBaseline,
+        }),
+        3
+      )
 
       setWorker({
         workerId: res.student_id,
@@ -436,7 +393,7 @@ export function Enroll() {
         employeeId: data.employeeId,
         jobRole: data.jobRole,
         employerSite: data.employerSite,
-        tenantId,
+        tenantId: TENANT_ID,
         cognitiveBaseline: final,
       })
       setSelfie(data.selfieB64)
@@ -543,7 +500,7 @@ export function Enroll() {
             <div className="badge badge-green">Upload</div>
             <h1 className="step-title">Uploading...</h1>
             <p className="step-sub">Submitting your enrollment package to the backend.</p>
-            <div style={{ marginTop: 40, color: 'var(--green)', fontSize: 48 }}>⬡</div>
+            <div className="spinner" />
           </>
         )}
 

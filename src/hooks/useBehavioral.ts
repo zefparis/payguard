@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 export type DeviceType = 'mobile' | 'desktop' | 'unknown'
 
@@ -410,5 +410,14 @@ export function useBehavioral(): BehavioralController {
     }
   }, [isCapturing, isTextInputFocused])
 
-  return useMemo(() => ({ start, stop, isCapturing }), [isCapturing, start, stop])
+  const controllerRef = useRef<BehavioralController>({
+    start: async () => {},
+    stop: () => stop(),
+    isCapturing: false,
+  })
+  controllerRef.current.start = start
+  controllerRef.current.stop = stop
+  controllerRef.current.isCapturing = isCapturing
+
+  return controllerRef.current
 }

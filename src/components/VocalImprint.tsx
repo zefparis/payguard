@@ -26,7 +26,7 @@ function rms(arr: Float32Array): number {
 }
 
 export function VocalImprint({ onComplete }: Props) {
-  const { isRecording, countdownMs, waveform, recordAudio, extractMFCC } = useVoiceBiometrics()
+  const { isRecording, countdownMs, onWaveformData, recordAudio, extractMFCC } = useVoiceBiometrics()
 
   const [round, setRound] = useState(0)
   const [qualities, setQualities] = useState<number[]>([])
@@ -39,33 +39,35 @@ export function VocalImprint({ onComplete }: Props) {
   const prompt = useMemo(() => PROMPTS[round % PROMPTS.length], [round])
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !waveform) return
+    onWaveformData.current = (data: Uint8Array) => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
 
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+      const { width, height } = canvas
+      ctx.clearRect(0, 0, width, height)
+      ctx.fillStyle = 'rgba(34,197,94,0.06)'
+      ctx.fillRect(0, 0, width, height)
 
-    const { width, height } = canvas
-    ctx.clearRect(0, 0, width, height)
-    ctx.fillStyle = 'rgba(34,197,94,0.06)'
-    ctx.fillRect(0, 0, width, height)
+      ctx.strokeStyle = 'rgba(34,197,94,0.9)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
 
-    ctx.strokeStyle = 'rgba(34,197,94,0.9)'
-    ctx.lineWidth = 2
-    ctx.beginPath()
-
-    const slice = Math.max(1, Math.floor(waveform.length / width))
-    let x = 0
-    for (let i = 0; i < waveform.length; i += slice) {
-      const v = (waveform[i] - 128) / 128 // [-1..1]
-      const y = height / 2 + v * (height * 0.35)
-      if (x === 0) ctx.moveTo(x, y)
-      else ctx.lineTo(x, y)
-      x += 1
-      if (x >= width) break
+      const slice = Math.max(1, Math.floor(data.length / width))
+      let x = 0
+      for (let i = 0; i < data.length; i += slice) {
+        const v = (data[i] - 128) / 128
+        const y = height / 2 + v * (height * 0.35)
+        if (x === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+        x += 1
+        if (x >= width) break
+      }
+      ctx.stroke()
     }
-    ctx.stroke()
-  }, [waveform])
+    return () => { onWaveformData.current = null }
+  }, [onWaveformData])
 
   async function runRound() {
     setError(null)

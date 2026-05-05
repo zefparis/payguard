@@ -15,7 +15,7 @@ export function SelfieCapture({ onCapture, loading }: Props) {
     // Toujours utiliser getUserMedia + canvas (fonctionne aussi dans Capacitor Android)
     const b64 = capture()
     if (b64) {
-      console.log('[SELFIE-CAPTURE] calling onCapture, b64 length:', b64.length)
+      if (import.meta.env.DEV) console.log('[SELFIE-CAPTURE] calling onCapture, b64 length:', b64.length)
       setCaptured(b64)
       onCapture(b64)
     }

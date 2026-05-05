@@ -8,6 +8,7 @@ import {
   verifyWorker,
   vocalVerify,
 } from '../services/api'
+import { withRetry } from '../utils/retry'
 import { useVoiceBiometrics } from '../hooks/useVoiceBiometrics'
 import {
   useBehavioral,
@@ -143,6 +144,7 @@ export function PaymentConfirm() {
   const [vocalQuality, setVocalQuality] = useState<number | null>(null)
   const [vocalError, setVocalError] = useState<string>('')
   const [lookupBusy, setLookupBusy] = useState(false)
+  const [verifying, setVerifying] = useState(false)
 
   const voice = useVoiceBiometrics()
   const behavioral = useBehavioral()
@@ -172,14 +174,14 @@ export function PaymentConfirm() {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
       })
-      console.log('[PAYGUARD-LOOKUP] result:', lookup)
+      if (import.meta.env.DEV) console.log('[PAYGUARD-LOOKUP] result:', lookup)
       if (!lookup.found) {
         setStep('not-enrolled')
         return
       }
       if (lookup.student_id) setStudentId(lookup.student_id)
     } catch (err) {
-      console.error('[PAYGUARD-LOOKUP] error:', err)
+      if (import.meta.env.DEV) console.error('[PAYGUARD-LOOKUP] error:', err)
       setErrorMsg(err instanceof Error ? err.message : 'Profile lookup failed')
       return
     } finally {
@@ -191,16 +193,22 @@ export function PaymentConfirm() {
   }, [firstName, lastName, behavioral, lookupBusy])
 
   const handleSelfie = useCallback(async (b64: string) => {
-    console.log('[PAYGUARD-SELFIE] b64 length:', b64?.length)
+    if (import.meta.env.DEV) console.log('[PAYGUARD-SELFIE] b64 length:', b64?.length)
     setErrorMsg('')
+    setVerifying(true)
     try {
-      const res = await verifyWorker({ selfie_b64: b64, first_name: firstName, last_name: lastName, student_id: studentId ?? undefined })
+      const res = await withRetry(
+        () => verifyWorker({ selfie_b64: b64, first_name: firstName, last_name: lastName, student_id: studentId ?? undefined }),
+        3
+      )
       setSimilarity(res.similarity)
       setStudentId(res.student_id ?? null)
       setStep('vocal')
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Face check failed')
       setStep('identity')
+    } finally {
+      setVerifying(false)
     }
   }, [firstName, lastName, studentId])
 
@@ -212,7 +220,7 @@ export function PaymentConfirm() {
     } catch (err) {
       const errName = err instanceof Error ? err.name || 'Error' : 'Unknown'
       const errMsg = err instanceof Error ? err.message : String(err)
-      console.error('[vocal] recordAudio failed', { errName, errMsg })
+      if (import.meta.env.DEV) console.error('[vocal] recordAudio failed', { errName, errMsg })
       setVocalError(`${errName}: ${errMsg}`)
       setVocalQuality(0)
       setStep('reaction')
@@ -220,7 +228,7 @@ export function PaymentConfirm() {
     }
 
     if (!samples || samples.length === 0) {
-      console.error('[vocal] recordAudio returned empty buffer')
+      if (import.meta.env.DEV) console.error('[vocal] recordAudio returned empty buffer')
       setVocalError('Microphone returned empty audio')
       setVocalQuality(0)
       setStep('reaction')
@@ -232,17 +240,20 @@ export function PaymentConfirm() {
 
     // Real biometric check: compare against enrolled embedding via backend
     try {
-      const resp = await vocalVerify({
-        first_name: firstName,
-        last_name: lastName,
-        vocal_embedding: Array.from(embedding),
-      })
+      const resp = await withRetry(
+        () => vocalVerify({
+          first_name: firstName,
+          last_name: lastName,
+          vocal_embedding: Array.from(embedding),
+        }),
+        3
+      )
       const score = Math.max(0, Math.min(1, resp.vocal_score))
       setVocalQuality(score)
-      console.log('[vocal] verify result', { score, reason: resp.reason, samples: samples.length })
+      if (import.meta.env.DEV) console.log('[vocal] verify result', { score, reason: resp.reason, samples: samples.length })
     } catch (verifyErr) {
       const errMsg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr)
-      console.warn('[vocal-verify] failed', errMsg)
+      if (import.meta.env.DEV) console.warn('[vocal-verify] failed', errMsg)
       setVocalQuality(0)
     }
 
@@ -259,7 +270,7 @@ export function PaymentConfirm() {
     try {
       const profile = behavioral.stop()
       behavioralScore = behavioralScoreFromProfile(profile)
-      console.log('[BEHAVIORAL DEBUG]', {
+      if (import.meta.env.DEV) console.log('[BEHAVIORAL DEBUG]', {
         gyroStd: profile.motion.rotation_rate?.mag_std,
         accelStd: profile.motion.accel_gravity?.mag_std,
         motionSamples: profile.motion.samples,
@@ -280,20 +291,23 @@ export function PaymentConfirm() {
     }
 
     try {
-      const result = await sendAuthPaymentSignals({
-        student_id: studentId,
-        vocal_score: vocalQuality ?? 0,
-        behavioral_score: behavioralScore,
-        reaction_ms: avgMs,
-      })
+      const result = await withRetry(
+        () => sendAuthPaymentSignals({
+          student_id: studentId!,
+          vocal_score: vocalQuality ?? 0,
+          behavioral_score: behavioralScore,
+          reaction_ms: avgMs,
+        }),
+        3
+      )
       let d: Decision = result.decision
       if (d === 'REJECTED' && nextAttempts >= MAX_ATTEMPTS) {
         d = 'MANUAL_REVIEW'
       }
-      console.log('[PAYGUARD] backend decision', { decision: d, trust_score: result.trust_score, detail: result.detail })
+      if (import.meta.env.DEV) console.log('[PAYGUARD] backend decision', { decision: d, trust_score: result.trust_score, detail: result.detail })
       setDecision(d)
     } catch (err) {
-      console.warn('[auth-payment-signals] failed — falling back to REVIEW', err)
+      if (import.meta.env.DEV) console.warn('[auth-payment-signals] failed — falling back to REVIEW', err)
       setDecision('REVIEW')
     }
     setStep('decision')
@@ -463,7 +477,14 @@ export function PaymentConfirm() {
             Center your face in the frame and capture. We compare it to your
             registered profile.
           </p>
-          <SelfieCapture onCapture={handleSelfie} />
+          {verifying ? (
+            <>
+              <p className="step-sub">Verifying face...</p>
+              <div className="spinner" />
+            </>
+          ) : (
+            <SelfieCapture onCapture={handleSelfie} />
+          )}
         </>
       )}
 
@@ -518,7 +539,7 @@ export function PaymentConfirm() {
       {step === 'computing' && (
         <>
           <h1 className="step-title">Computing decision...</h1>
-          <div style={{ marginTop: 40, color: 'var(--green)', fontSize: 48 }}>⬡</div>
+          <div className="spinner" />
         </>
       )}
 

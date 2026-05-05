@@ -1,8 +1,8 @@
 const API = import.meta.env.VITE_API_URL || 'https://hybrid-vector-api.fly.dev'
-const TENANT = import.meta.env.VITE_TENANT_ID
 const API_KEY = import.meta.env.VITE_HV_API_KEY
 
 import { isSecureCollectMode } from './secureMode'
+import { TENANT_ID as TENANT } from '../config'
 
 const TIMEOUT_MS = 8000
 

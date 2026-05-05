@@ -48,7 +48,7 @@ export function useCamera() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
     ctx.drawImage(video, 0, 0)
-    return canvas.toDataURL('image/jpeg', 0.9)
+    return canvas.toDataURL('image/jpeg', 0.75)
   }, [ready])
 
   return { videoRef, ready, error, capture, isInitializing }

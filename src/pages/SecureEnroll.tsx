@@ -17,6 +17,8 @@ import { generateSessionKeypair, PQ_ALGORITHM, signProfile } from '../services/p
 import type { CognitiveBaseline } from '../types'
 
 import { voiceCollector } from '../signal-engine'
+import { withRetry } from '../utils/retry'
+import { TENANT_ID, VOICE_DURATION_MS } from '../config'
 
 type State = 'INIT' | 'COLLECTE' | 'UPLOAD' | 'TERMINE' | 'ERREUR'
 
@@ -100,23 +102,6 @@ const IdentityForm = memo(function IdentityForm({
   )
 })
 
-async function sleep(ms: number) {
-  await new Promise<void>(r => setTimeout(r, ms))
-}
-
-async function withRetry<T>(fn: () => Promise<T>, retries: number, baseDelayMs = 600): Promise<T> {
-  let lastErr: unknown
-  for (let i = 0; i <= retries; i += 1) {
-    try {
-      return await fn()
-    } catch (e) {
-      lastErr = e
-      if (i === retries) break
-      await sleep(baseDelayMs * (i + 1))
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error('Upload failed')
-}
 
 export function SecureEnroll() {
   const nav = useNavigate()
@@ -159,13 +144,12 @@ export function SecureEnroll() {
 
         // Auth API key is implicit via env headers() in services/api.ts.
         // “Récupérer config tenant” : on valide juste que le tenant est présent côté env.
-        const tenantId = import.meta.env.VITE_TENANT_ID
-        if (!tenantId) throw new Error('Missing VITE_TENANT_ID')
+        if (!TENANT_ID) throw new Error('Missing VITE_TENANT_ID')
 
         const sid = ulid()
         const rec: SecureSessionRecord = {
           session_id: sid,
-          tenant_id: tenantId,
+          tenant_id: TENANT_ID,
           created_at: new Date().toISOString(),
           state: 'INIT',
         }
@@ -218,7 +202,7 @@ export function SecureEnroll() {
 
     const next: SecureSessionRecord = {
       session_id: sessionId,
-      tenant_id: import.meta.env.VITE_TENANT_ID,
+      tenant_id: TENANT_ID,
       created_at: session?.created_at ?? new Date().toISOString(),
       state: 'COLLECTE',
       identity: {
@@ -273,18 +257,17 @@ export function SecureEnroll() {
     setIsRecording(true)
     setRecordingProgress(0)
 
-    // Progress bar sur 4000ms
     const start = Date.now()
     const interval = setInterval(() => {
       const elapsed = Date.now() - start
-      const pct = Math.min((elapsed / 4000) * 100, 100)
+      const pct = Math.min((elapsed / VOICE_DURATION_MS) * 100, 100)
       setRecordingProgress(pct)
       if (pct >= 100) clearInterval(interval)
     }, 50)
 
     try {
       await voiceCollector.start()
-      await new Promise<void>(r => setTimeout(r, 4000))
+      await new Promise<void>(r => setTimeout(r, VOICE_DURATION_MS))
       await voiceCollector.stopAndCompute()
       clearInterval(interval)
       setRecordingProgress(100)
@@ -397,7 +380,6 @@ export function SecureEnroll() {
       )
 
       await idbDeleteSession(sessionId)
-      window.localStorage.setItem('payguard-last-session-id', sessionId)
 
       nav('/results')
     } catch (e) {
@@ -527,7 +509,7 @@ export function SecureEnroll() {
             <div className="badge badge-green">Upload</div>
             <h1 className="step-title">Uploading...</h1>
             <p className="step-sub">Reading IndexedDB → POST /edguard/enroll (retry x3)</p>
-            <div style={{ marginTop: 40, color: 'var(--green)', fontSize: 48 }}>⬡</div>
+            <div className="spinner" />
           </>
         )}
 
