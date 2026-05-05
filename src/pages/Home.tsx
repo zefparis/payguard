@@ -8,8 +8,7 @@ export function Home() {
       <div className="logo">💰 PAYGUARD</div>
       <h1 className="step-title" style={{ fontSize: 30, marginBottom: 8 }}>Payroll Validation</h1>
       <p className="step-sub">
-        Biometric payment confirmation for workers.<br />
-        Powered by Hybrid Vector — 3 French patents.
+        Biometric payment confirmation for workers.
       </p>
 
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>
