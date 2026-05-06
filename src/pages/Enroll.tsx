@@ -204,7 +204,7 @@ export function Enroll() {
     [step],
   )
   const isPointerPhase = useMemo(
-    () => ['identity', 'selfie', 'stroop', 'reflex', 'voice', 'digitspan'].includes(step),
+    () => ['identity', 'selfie', 'stroop', 'voice', 'digitspan'].includes(step),
     [step],
   )
 
