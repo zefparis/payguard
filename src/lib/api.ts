@@ -57,3 +57,13 @@ export async function authPaymentSignals(payload: AuthPaymentPayload): Promise<{
   if (!res.ok) throw new Error(`auth-payment-signals failed: ${res.status}`)
   return res.json()
 }
+
+export async function lookup(payload: { first_name: string; last_name: string }): Promise<{ found: boolean; student_id?: string; first_name?: string }> {
+  const res = await fetchWithTimeout(`${API_URL}/payguard/lookup`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ ...payload, tenant_id: TENANT_ID }),
+  })
+  if (!res.ok) throw new Error(`lookup failed: ${res.status}`)
+  return res.json()
+}
