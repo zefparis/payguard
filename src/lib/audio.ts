@@ -1,20 +1,10 @@
-export function clamp01(x: number): number {
+// ─── DSP Utilities ──────────────────────────────────────────────────────────
+
+function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x))
 }
 
-export function mean(arr: Float32Array): number {
-  let s = 0
-  for (let i = 0; i < arr.length; i += 1) s += arr[i]
-  return arr.length ? s / arr.length : 0
-}
-
-export function rms(arr: Float32Array): number {
-  let s = 0
-  for (let i = 0; i < arr.length; i += 1) s += arr[i] * arr[i]
-  return arr.length ? Math.sqrt(s / arr.length) : 0
-}
-
-export function toMonoFloat32(audioBuffer: AudioBuffer): Float32Array {
+function toMonoFloat32(audioBuffer: AudioBuffer): Float32Array {
   if (audioBuffer.numberOfChannels === 1) return audioBuffer.getChannelData(0)
   const left = audioBuffer.getChannelData(0)
   const right = audioBuffer.getChannelData(1)
@@ -23,7 +13,7 @@ export function toMonoFloat32(audioBuffer: AudioBuffer): Float32Array {
   return out
 }
 
-export function resampleLinear(input: Float32Array, inputRate: number, outputRate: number): Float32Array {
+function resampleLinear(input: Float32Array, inputRate: number, outputRate: number): Float32Array {
   if (inputRate === outputRate) return input
   const ratio = outputRate / inputRate
   const outLen = Math.max(1, Math.floor(input.length * ratio))
@@ -38,15 +28,15 @@ export function resampleLinear(input: Float32Array, inputRate: number, outputRat
   return out
 }
 
-export function hzToMel(hz: number): number {
+function hzToMel(hz: number): number {
   return 2595 * Math.log10(1 + hz / 700)
 }
 
-export function melToHz(mel: number): number {
+function melToHz(mel: number): number {
   return 700 * (10 ** (mel / 2595) - 1)
 }
 
-export function hamming(N: number): Float32Array {
+function hamming(N: number): Float32Array {
   const w = new Float32Array(N)
   for (let n = 0; n < N; n += 1) {
     w[n] = 0.54 - 0.46 * Math.cos((2 * Math.PI * n) / (N - 1))
@@ -54,7 +44,7 @@ export function hamming(N: number): Float32Array {
   return w
 }
 
-export function dctII(vector: Float32Array, numCoeffs: number): Float32Array {
+function dctII(vector: Float32Array, numCoeffs: number): Float32Array {
   const N = vector.length
   const out = new Float32Array(numCoeffs)
   for (let k = 0; k < numCoeffs; k += 1) {
@@ -67,12 +57,12 @@ export function dctII(vector: Float32Array, numCoeffs: number): Float32Array {
   return out
 }
 
-export function createMelFilterbank(
+function createMelFilterbank(
   sampleRate: number,
   fftSize: number,
   numFilters: number,
   fMin = 20,
-  fMax = 8000
+  fMax = 8000,
 ): Float32Array[] {
   const nyquist = sampleRate / 2
   const maxHz = Math.min(fMax, nyquist)
@@ -106,7 +96,7 @@ export function createMelFilterbank(
   return filters
 }
 
-export function spectrumFromFrame(frame: Float32Array, _sampleRate: number, fftSize: number): Float32Array {
+function spectrumFromFrame(frame: Float32Array, fftSize: number): Float32Array {
   const numBins = Math.floor(fftSize / 2) + 1
   const out = new Float32Array(numBins)
   for (let k = 0; k < numBins; k += 1) {
@@ -123,7 +113,7 @@ export function spectrumFromFrame(frame: Float32Array, _sampleRate: number, fftS
   return out
 }
 
-export function extractMFCC(audioData: Float32Array, sampleRate: number): Float32Array {
+function extractMFCC(audioData: Float32Array, sampleRate: number): Float32Array {
   const winSize = Math.floor(sampleRate * 0.025)
   const hopSize = Math.floor(sampleRate * 0.01)
   const fftSize = 1 << Math.ceil(Math.log2(winSize))
@@ -144,7 +134,7 @@ export function extractMFCC(audioData: Float32Array, sampleRate: number): Float3
 
   const mfccSum = new Float32Array(numMfcc)
   for (const frame of frames) {
-    const spectrum = spectrumFromFrame(frame, sampleRate, fftSize)
+    const spectrum = spectrumFromFrame(frame, fftSize)
     const melEnergies = new Float32Array(numFilters)
 
     for (let m = 0; m < numFilters; m += 1) {
@@ -176,3 +166,60 @@ export function extractMFCC(audioData: Float32Array, sampleRate: number): Float3
 
   return emb
 }
+
+// ─── Public API ─────────────────────────────────────────────────────────────
+
+const TARGET_SR = 16000
+
+export async function recordAudio(durationMs: number): Promise<Float32Array[]> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : 'audio/webm'
+
+  const recorder = new MediaRecorder(stream, { mimeType })
+  const chunks: BlobPart[] = []
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data)
+  }
+
+  recorder.start()
+  await new Promise<void>(resolve => setTimeout(resolve, durationMs))
+  recorder.stop()
+
+  const blob = await new Promise<Blob>((resolve) => {
+    recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }))
+  })
+
+  stream.getTracks().forEach(t => t.stop())
+
+  const arrayBuffer = await blob.arrayBuffer()
+  const audioCtx = new AudioContext()
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0))
+  await audioCtx.close()
+
+  const mono = toMonoFloat32(audioBuffer)
+  const resampled = resampleLinear(mono, audioBuffer.sampleRate, TARGET_SR)
+
+  return [resampled]
+}
+
+export function computeVocalEmbedding(samples: Float32Array[]): number[] {
+  if (samples.length === 0) return Array(192).fill(0)
+
+  // Concatenate all samples
+  const totalLen = samples.reduce((s, a) => s + a.length, 0)
+  const concat = new Float32Array(totalLen)
+  let off = 0
+  for (const s of samples) {
+    concat.set(s, off)
+    off += s.length
+  }
+
+  const emb = extractMFCC(concat, TARGET_SR)
+  return Array.from(emb)
+}
+
+// Re-export clamp01 for potential external use
+export { clamp01 }
