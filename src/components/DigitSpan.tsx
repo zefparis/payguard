@@ -28,7 +28,7 @@ export function DigitSpan({ onComplete }: Props) {
         <div class="badge badge-cyan" style="margin:0 auto 16px;display:inline-block;">Digit Span — Round <span data-round>1</span>/3</div>
         <div data-phase-label style="font-size:13px;color:var(--grey);text-align:center;margin-bottom:12px;">Memorize the sequence.</div>
         <div data-sequence style="font-size:64px;font-weight:900;letter-spacing:8px;color:#00C2FF;text-align:center;min-height:92px;display:flex;align-items:center;justify-content:center;font-family:Syne,system-ui,sans-serif;"></div>
-        <div data-timer style="font-size:13px;color:var(--grey);text-align:center;margin-top:8px;">Countdown: <b style="color:#fff;">2.0s</b></div>
+        <div data-timer style="font-size:13px;color:var(--grey);text-align:center;margin-top:8px;">Countdown: <span data-timer-value style="color:#fff;font-weight:700;">2.0s</span></div>
         <div data-progress-track style="width:100%;max-width:440px;height:10px;margin:12px auto 0;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden;">
           <div data-progress-fill style="width:100%;height:100%;background:linear-gradient(90deg,#00C2FF,#38bdf8);border-radius:999px;"></div>
         </div>
@@ -45,14 +45,15 @@ export function DigitSpan({ onComplete }: Props) {
     const roundEl = el.querySelector('[data-round]') as HTMLSpanElement | null
     const phaseLabelEl = el.querySelector('[data-phase-label]') as HTMLDivElement | null
     const sequenceEl = el.querySelector('[data-sequence]') as HTMLDivElement | null
-    const timerEl = el.querySelector('[data-timer]') as HTMLDivElement | null
+    const timerWrapEl = el.querySelector('[data-timer]') as HTMLDivElement | null
+    const timerEl = el.querySelector('[data-timer-value]') as HTMLSpanElement | null
     const progressTrackEl = el.querySelector('[data-progress-track]') as HTMLDivElement | null
     const progressFillEl = el.querySelector('[data-progress-fill]') as HTMLDivElement | null
     const inputWrapEl = el.querySelector('[data-input-wrap]') as HTMLDivElement | null
     const inputEl = el.querySelector('[data-input]') as HTMLDivElement | null
     const gridEl = el.querySelector('[data-grid]') as HTMLDivElement | null
 
-    if (!roundEl || !phaseLabelEl || !sequenceEl || !timerEl || !progressTrackEl || !progressFillEl || !inputWrapEl || !inputEl || !gridEl) {
+    if (!roundEl || !phaseLabelEl || !sequenceEl || !timerWrapEl || !timerEl || !progressTrackEl || !progressFillEl || !inputWrapEl || !inputEl || !gridEl) {
       return () => {
         delete (window as any).__digitSpanComplete
         el.innerHTML = ''
@@ -108,7 +109,7 @@ export function DigitSpan({ onComplete }: Props) {
       sequenceEl.textContent = '•'.repeat(roundLen)
       sequenceEl.style.color = '#223042'
       sequenceEl.style.fontFamily = 'Syne,system-ui,sans-serif'
-      timerEl.style.display = 'none'
+      timerWrapEl.style.display = 'none'
       progressTrackEl.style.display = 'none'
       inputWrapEl.style.display = 'block'
       renderInput()
@@ -121,10 +122,10 @@ export function DigitSpan({ onComplete }: Props) {
       sequenceEl.textContent = sequence
       sequenceEl.style.color = '#00C2FF'
       sequenceEl.style.fontFamily = 'Syne,system-ui,sans-serif'
-      timerEl.style.display = 'block'
+      timerWrapEl.style.display = 'block'
       progressTrackEl.style.display = 'block'
       inputWrapEl.style.display = 'none'
-      timerEl.innerHTML = 'Countdown: <b style="color:#fff;">2.0s</b>'
+      timerEl.textContent = '2.0s'
       progressFillEl.style.width = '100%'
     }
 
@@ -135,7 +136,7 @@ export function DigitSpan({ onComplete }: Props) {
       }
 
       const remaining = Math.max(0, 2000 - (now - memoryStartedAt))
-      timerEl.innerHTML = `Countdown: <b style="color:#fff;">${(remaining / 1000).toFixed(1)}s</b>`
+      timerEl.textContent = `${(remaining / 1000).toFixed(1)}s`
       progressFillEl.style.width = `${(remaining / 2000) * 100}%`
 
       if (remaining <= 0) {
