@@ -395,8 +395,8 @@ export function SecureEnroll() {
     [state, collectStep],
   )
   const isPointerPhase = useMemo(
-    () => state === 'COLLECTE' && collectStep !== 'reflex',
-    [state, collectStep],
+    () => state === 'COLLECTE',
+    [state],
   )
 
   return (

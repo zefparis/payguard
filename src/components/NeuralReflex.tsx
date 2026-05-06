@@ -123,6 +123,17 @@ export function NeuralReflex({ onComplete }: Props) {
       rafId = window.requestAnimationFrame(readyLoop)
     }
 
+    const goLoop = (now: number) => {
+      if (finished || phase !== 'go') {
+        targetEl.style.willChange = 'auto'
+        return
+      }
+
+      const pulse = (Math.sin((now - goStartedAt) / 140) + 1) / 2
+      const scale = 1 + pulse * 0.06
+      targetEl.style.transform = `scale(${scale.toFixed(3)})`
+      rafId = window.requestAnimationFrame(goLoop)
+    }
 
     const startReadyPhase = () => {
       window.clearTimeout(readyTimeout)
@@ -137,8 +148,9 @@ export function NeuralReflex({ onComplete }: Props) {
         cancelAnimationFrame(rafId)
         phase = 'go'
         goStartedAt = performance.now()
+        targetEl.style.willChange = 'transform'
         renderGo()
-        targetEl.style.transform = 'scale(1.06)'
+        rafId = window.requestAnimationFrame(goLoop)
       }, readyDelay)
     }
 
