@@ -24,7 +24,8 @@ type Step =
   | 'selfie'
   | 'vocal'
   | 'reaction'
-  | 'computing'
+  | 'verifying'
+  | 'upload-error'
   | 'decision'
 
 type Decision = 'APPROVED' | 'REVIEW' | 'REJECTED' | 'MANUAL_REVIEW'
@@ -136,15 +137,26 @@ export function PaymentConfirm() {
   const [month, setMonth] = useState('')
   const [year, setYear] = useState(new Date().getFullYear().toString())
   const [employer, setEmployer] = useState('')
-  const [, setSimilarity] = useState<number | null>(null)
   const [errorMsg, setErrorMsg] = useState<string>('')
   const [attempts, setAttempts] = useState(0)
   const [decision, setDecision] = useState<Decision | null>(null)
   const [studentId, setStudentId] = useState<string | null>(null)
-  const [vocalQuality, setVocalQuality] = useState<number | null>(null)
   const [vocalError, setVocalError] = useState<string>('')
   const [lookupBusy, setLookupBusy] = useState(false)
-  const [verifying, setVerifying] = useState(false)
+  const [uploadError, setUploadError] = useState<string>('')
+
+  // Offline captured data — no network until 'verifying' step
+  const [captured, setCaptured] = useState<{
+    selfieB64: string | null
+    vocalEmbedding: number[] | null
+    reactionMs: number | null
+    behavioralProfile: BehavioralProfile | null
+  }>({
+    selfieB64: null,
+    vocalEmbedding: null,
+    reactionMs: null,
+    behavioralProfile: null,
+  })
 
   const voice = useVoiceBiometrics()
   const behavioral = useBehavioral()
@@ -192,25 +204,11 @@ export function PaymentConfirm() {
     setStep('selfie')
   }, [firstName, lastName, behavioral, lookupBusy])
 
-  const handleSelfie = useCallback(async (b64: string) => {
+  const handleSelfie = useCallback((b64: string) => {
     if (import.meta.env.DEV) console.log('[PAYGUARD-SELFIE] b64 length:', b64?.length)
-    setErrorMsg('')
-    setVerifying(true)
-    try {
-      const res = await withRetry(
-        () => verifyWorker({ selfie_b64: b64, first_name: firstName, last_name: lastName, student_id: studentId ?? undefined }),
-        3
-      )
-      setSimilarity(res.similarity)
-      setStudentId(res.student_id ?? null)
-      setStep('vocal')
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Face check failed')
-      setStep('identity')
-    } finally {
-      setVerifying(false)
-    }
-  }, [firstName, lastName, studentId])
+    setCaptured(c => ({ ...c, selfieB64: b64 }))
+    setStep('vocal')
+  }, [])
 
   const handleVocal = useCallback(async () => {
     setVocalError('')
@@ -222,7 +220,7 @@ export function PaymentConfirm() {
       const errMsg = err instanceof Error ? err.message : String(err)
       if (import.meta.env.DEV) console.error('[vocal] recordAudio failed', { errName, errMsg })
       setVocalError(`${errName}: ${errMsg}`)
-      setVocalQuality(0)
+      setCaptured(c => ({ ...c, vocalEmbedding: null }))
       setStep('reaction')
       return
     }
@@ -230,110 +228,138 @@ export function PaymentConfirm() {
     if (!samples || samples.length === 0) {
       if (import.meta.env.DEV) console.error('[vocal] recordAudio returned empty buffer')
       setVocalError('Microphone returned empty audio')
-      setVocalQuality(0)
+      setCaptured(c => ({ ...c, vocalEmbedding: null }))
       setStep('reaction')
       return
     }
 
     const embedding = voice.extractMFCC(samples, 16000)
     vocalEmbeddingRef.current = embedding
-
-    // Real biometric check: compare against enrolled embedding via backend
-    try {
-      const resp = await withRetry(
-        () => vocalVerify({
-          first_name: firstName,
-          last_name: lastName,
-          vocal_embedding: Array.from(embedding),
-        }),
-        3
-      )
-      const score = Math.max(0, Math.min(1, resp.vocal_score))
-      setVocalQuality(score)
-      if (import.meta.env.DEV) console.log('[vocal] verify result', { score, reason: resp.reason, samples: samples.length })
-    } catch (verifyErr) {
-      const errMsg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr)
-      if (import.meta.env.DEV) console.warn('[vocal-verify] failed', errMsg)
-      setVocalQuality(0)
-    }
-
+    setCaptured(c => ({ ...c, vocalEmbedding: Array.from(embedding) }))
     setStep('reaction')
-  }, [voice, firstName, lastName])
+  }, [voice])
 
-  const handleReactionDone = useCallback(async (avgMs: number) => {
-    setStep('computing')
-    const nextAttempts = attempts + 1
-    setAttempts(nextAttempts)
-
-    // Compute behavioral score on the client (sensors only live here)
-    let behavioralScore = 0
+  const handleReactionDone = useCallback((avgMs: number) => {
+    let profile: BehavioralProfile | null = null
     try {
-      const profile = behavioral.stop()
-      behavioralScore = behavioralScoreFromProfile(profile)
+      profile = behavioral.stop()
       if (import.meta.env.DEV) console.log('[BEHAVIORAL DEBUG]', {
         gyroStd: profile.motion.rotation_rate?.mag_std,
         accelStd: profile.motion.accel_gravity?.mag_std,
         motionSamples: profile.motion.samples,
         tapCV: profile.touch.inter_tap_ms_mean / Math.max(1, profile.touch.tap_duration_ms_mean),
         taps: profile.touch.taps,
-        finalScore: behavioralScore,
       })
-    } catch {
-      behavioralScore = 0
-    }
+    } catch { /* already stopped */ }
 
-    // Backend computes the final decision (single source of truth)
-    if (!studentId) {
-      // No enrollment session — fail safe to REVIEW
-      setDecision('REVIEW')
-      setStep('decision')
-      return
-    }
+    setCaptured(c => ({ ...c, reactionMs: avgMs, behavioralProfile: profile }))
+    setStep('verifying')
+  }, [behavioral])
 
-    try {
-      const result = await withRetry(
-        () => sendAuthPaymentSignals({
-          student_id: studentId!,
-          vocal_score: vocalQuality ?? 0,
-          behavioral_score: behavioralScore,
-          reaction_ms: avgMs,
-        }),
-        3
-      )
-      let d: Decision = result.decision
-      if (d === 'REJECTED' && nextAttempts >= MAX_ATTEMPTS) {
-        d = 'MANUAL_REVIEW'
+  // Batch upload — single network phase after all captures are done
+  useEffect(() => {
+    if (step !== 'verifying') return
+    if (!captured.selfieB64 || captured.reactionMs == null) return
+
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        // 1. Face verify
+        const verifyResp = await withRetry(
+          () => verifyWorker({
+            selfie_b64: captured.selfieB64!,
+            first_name: firstName,
+            last_name: lastName,
+            student_id: studentId ?? undefined,
+          }),
+          3
+        )
+        if (cancelled) return
+        if (verifyResp.student_id) setStudentId(verifyResp.student_id)
+        const resolvedStudentId = verifyResp.student_id || studentId
+
+        // 2. Voice verify (optional — may have failed during capture)
+        let vocalScore = 0
+        if (captured.vocalEmbedding && captured.vocalEmbedding.length > 0) {
+          try {
+            const vocalResp = await withRetry(
+              () => vocalVerify({
+                first_name: firstName,
+                last_name: lastName,
+                vocal_embedding: captured.vocalEmbedding!,
+              }),
+              3
+            )
+            if (cancelled) return
+            vocalScore = Math.max(0, Math.min(1, vocalResp.vocal_score))
+          } catch (verifyErr) {
+            if (import.meta.env.DEV) console.warn('[vocal-verify] failed', verifyErr)
+          }
+        }
+
+        // 3. Final decision
+        if (!resolvedStudentId) {
+          if (cancelled) return
+          setDecision('REVIEW')
+          setStep('decision')
+          return
+        }
+
+        const behavioralScore = captured.behavioralProfile
+          ? behavioralScoreFromProfile(captured.behavioralProfile)
+          : 0
+
+        const result = await withRetry(
+          () => sendAuthPaymentSignals({
+            student_id: resolvedStudentId!,
+            vocal_score: vocalScore,
+            behavioral_score: behavioralScore,
+            reaction_ms: captured.reactionMs!,
+          }),
+          3
+        )
+        if (cancelled) return
+
+        const nextAttempts = attempts + 1
+        setAttempts(nextAttempts)
+        let d: Decision = result.decision
+        if (d === 'REJECTED' && nextAttempts >= MAX_ATTEMPTS) {
+          d = 'MANUAL_REVIEW'
+        }
+        if (import.meta.env.DEV) console.log('[PAYGUARD] backend decision', { decision: d, trust_score: result.trust_score, detail: result.detail })
+        setDecision(d)
+        setStep('decision')
+      } catch (err) {
+        if (cancelled) return
+        setUploadError(err instanceof Error ? err.message : 'Network error')
+        setStep('upload-error')
       }
-      if (import.meta.env.DEV) console.log('[PAYGUARD] backend decision', { decision: d, trust_score: result.trust_score, detail: result.detail })
-      setDecision(d)
-    } catch (err) {
-      if (import.meta.env.DEV) console.warn('[auth-payment-signals] failed — falling back to REVIEW', err)
-      setDecision('REVIEW')
-    }
-    setStep('decision')
-  }, [attempts, studentId, vocalQuality, behavioral])
+    })()
+
+    return () => { cancelled = true }
+  }, [step, captured, studentId, firstName, lastName, attempts])
 
   const retry = useCallback(() => {
-    setSimilarity(null)
     setDecision(null)
     setErrorMsg('')
-    setVocalQuality(null)
     setVocalError('')
     vocalEmbeddingRef.current = null
+    setCaptured({ selfieB64: null, vocalEmbedding: null, reactionMs: null, behavioralProfile: null })
     setStudentId(null)
     void behavioral.start()
     setStep('selfie')
   }, [behavioral])
 
   const restart = useCallback(() => {
-    setSimilarity(null)
     setDecision(null)
     setErrorMsg('')
     setAttempts(0)
-    setVocalQuality(null)
     setVocalError('')
     vocalEmbeddingRef.current = null
+    setCaptured({ selfieB64: null, vocalEmbedding: null, reactionMs: null, behavioralProfile: null })
     setStudentId(null)
+    setUploadError('')
     setStep('identity')
   }, [])
 
@@ -341,10 +367,11 @@ export function PaymentConfirm() {
     switch (step) {
       case 'identity':     return 0
       case 'not-enrolled': return 0
-      case 'selfie':       return 25
-      case 'vocal':        return 50
-      case 'reaction':     return 70
-      case 'computing':    return 90
+      case 'selfie':       return 20
+      case 'vocal':        return 40
+      case 'reaction':     return 60
+      case 'verifying':    return 85
+      case 'upload-error': return 85
       case 'decision':     return 100
     }
   }, [step])
@@ -477,14 +504,7 @@ export function PaymentConfirm() {
             Center your face in the frame and capture. We compare it to your
             registered profile.
           </p>
-          {verifying ? (
-            <>
-              <p className="step-sub">Verifying face...</p>
-              <div className="spinner" />
-            </>
-          ) : (
-            <SelfieCapture onCapture={handleSelfie} />
-          )}
+          <SelfieCapture onCapture={handleSelfie} />
         </>
       )}
 
@@ -536,11 +556,32 @@ export function PaymentConfirm() {
         </>
       )}
 
-      {step === 'computing' && (
-        <>
-          <h1 className="step-title">Computing decision...</h1>
+      {step === 'verifying' && (
+        <div style={{ textAlign: 'center', padding: 48 }}>
           <div className="spinner" />
-        </>
+          <h2 style={{ marginTop: 24 }}>Verifying your identity</h2>
+          <p style={{ color: 'var(--secondary-label)', marginTop: 8 }}>
+            Please wait, this takes a few seconds.
+          </p>
+        </div>
+      )}
+
+      {step === 'upload-error' && (
+        <div style={{ textAlign: 'center', padding: 48 }}>
+          <h2>Connection failed</h2>
+          <p style={{ color: 'var(--secondary-label)', marginTop: 8 }}>
+            Your data was captured successfully. Please retry to submit.
+          </p>
+          {uploadError && (
+            <p style={{ color: 'var(--red)', fontSize: 13, marginTop: 8 }}>{uploadError}</p>
+          )}
+          <button className="btn btn-primary" style={{ marginTop: 24 }} onClick={() => setStep('verifying')}>
+            Retry submission
+          </button>
+          <button className="btn btn-outline" style={{ marginTop: 12 }} onClick={restart}>
+            Start over
+          </button>
+        </div>
       )}
 
       {step === 'decision' && decision && (
