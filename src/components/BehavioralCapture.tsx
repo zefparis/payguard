@@ -2,13 +2,15 @@ import { useEffect, type ReactNode } from 'react'
 import { useBehavioral, type BehavioralController } from '../hooks/useBehavioral'
 
 type Props = {
-  enabled?: boolean
+  motionEnabled?: boolean
+  pointerEnabled?: boolean
   onController: (controller: BehavioralController) => void
   children: ReactNode
 }
 
-export function BehavioralCapture({ enabled = true, onController, children }: Props) {
-  const controller = useBehavioral()
+export function BehavioralCapture({ motionEnabled = true, pointerEnabled = true, onController, children }: Props) {
+  const enabled = motionEnabled || pointerEnabled
+  const controller = useBehavioral(motionEnabled)
 
   useEffect(() => {
     onController(controller)

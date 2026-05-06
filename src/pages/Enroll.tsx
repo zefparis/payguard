@@ -199,7 +199,11 @@ export function Enroll() {
   const [voiceProgress, setVoiceProgress] = useState(0)
   const [voiceCountdownMs, setVoiceCountdownMs] = useState(VOICE_DURATION_MS)
 
-  const isCollectPhase = useMemo(
+  const isMotionPhase = useMemo(
+    () => ['identity', 'selfie', 'voice'].includes(step),
+    [step],
+  )
+  const isPointerPhase = useMemo(
     () => ['identity', 'selfie', 'stroop', 'reflex', 'voice', 'digitspan'].includes(step),
     [step],
   )
@@ -214,13 +218,13 @@ export function Enroll() {
   }, [])
 
   useEffect(() => {
-    if (isCollectPhase) {
+    if (isPointerPhase) {
       signalBus.pause()
       return
     }
 
     signalBus.resume()
-  }, [isCollectPhase])
+  }, [isPointerPhase])
 
   const handleFirstNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     setForm(f => ({ ...f, firstName: e.target.value }))
@@ -417,7 +421,7 @@ export function Enroll() {
   }, [collected, uploadEnrollment])
 
   return (
-    <BehavioralCapture enabled={isCollectPhase} onController={onBehavioralController}>
+    <BehavioralCapture motionEnabled={isMotionPhase} pointerEnabled={isPointerPhase} onController={onBehavioralController}>
       <div className="page">
         <div className="logo" style={{ cursor: 'pointer' }} onClick={() => nav('/')}>← PAYGUARD</div>
 
