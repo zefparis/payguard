@@ -390,17 +390,8 @@ export function SecureEnroll() {
 
   const deviceType = useMemo(() => (behavioralProfile as BehavioralProfile | null)?.device?.device_type ?? 'unknown', [behavioralProfile])
 
-  const isMotionPhase = useMemo(
-    () => state === 'COLLECTE' && ['identity', 'selfie', 'voice'].includes(collectStep),
-    [state, collectStep],
-  )
-  const isPointerPhase = useMemo(
-    () => state === 'COLLECTE',
-    [state],
-  )
-
   return (
-    <BehavioralCapture motionEnabled={isMotionPhase} pointerEnabled={isPointerPhase} onController={onBehavioralController}>
+    <BehavioralCapture enabled={state === 'COLLECTE'} onController={onBehavioralController}>
       <div className="page">
         <div className="logo" style={{ cursor: 'pointer' }} onClick={() => nav('/')}>← PAYGUARD</div>
 

@@ -166,7 +166,7 @@ export async function requestMotionPermission(): Promise<boolean> {
   }
 }
 
-export function useBehavioral(motionEnabled = true): BehavioralController {
+export function useBehavioral(): BehavioralController {
   const [isCapturing, setIsCapturing] = useState(false)
 
   const startedAtRef = useRef<number | null>(null)
@@ -320,29 +320,20 @@ export function useBehavioral(motionEnabled = true): BehavioralController {
       orientation: await requestPermissionIfNeeded('orientation'),
     }
 
-    let lastMotionTs = 0
     const onMotion = (e: DeviceMotionEvent) => {
-      const now = performance.now()
-      if (now - lastMotionTs < 33) return // 30Hz cap
-      lastMotionTs = now
-
       // accelerationIncludingGravity is more widely supported
       const a = e.accelerationIncludingGravity
       const r = e.rotationRate
       if (a) updateRunningVec(motionVecRef.current, a.x ?? 0, a.y ?? 0, a.z ?? 0)
       if (r) updateRunningVec(gyroVecRef.current, r.alpha ?? 0, r.beta ?? 0, r.gamma ?? 0)
 
+      const now = performance.now()
       if (motionLastTsRef.current !== null) motionIntervalSumRef.current += (now - motionLastTsRef.current)
       motionLastTsRef.current = now
       motionSamplesRef.current += 1
     }
 
-    let lastOrientTs = 0
     const onOrientation = (e: DeviceOrientationEvent) => {
-      const now = performance.now()
-      if (now - lastOrientTs < 33) return // 30Hz cap
-      lastOrientTs = now
-
       updateRunningVec(orientVecRef.current, e.alpha ?? 0, e.beta ?? 0, e.gamma ?? 0)
       orientSamplesRef.current += 1
     }
@@ -400,10 +391,8 @@ export function useBehavioral(motionEnabled = true): BehavioralController {
       t.movePathN += 1
     }
 
-    if (motionEnabled) {
-      window.addEventListener('devicemotion', onMotion, { passive: true })
-      window.addEventListener('deviceorientation', onOrientation, { passive: true })
-    }
+    window.addEventListener('devicemotion', onMotion, { passive: true })
+    window.addEventListener('deviceorientation', onOrientation, { passive: true })
 
     window.addEventListener('pointerdown', onPointerDown, { passive: true })
     window.addEventListener('pointermove', onPointerMove, { passive: true })
@@ -419,7 +408,7 @@ export function useBehavioral(motionEnabled = true): BehavioralController {
       window.removeEventListener('pointerup', onPointerUpOrCancel)
       window.removeEventListener('pointercancel', onPointerUpOrCancel)
     }
-  }, [isCapturing, isTextInputFocused, motionEnabled])
+  }, [isCapturing, isTextInputFocused])
 
   const controllerRef = useRef<BehavioralController>({
     start: async () => {},
