@@ -125,6 +125,7 @@ export function NeuralReflex({ onComplete }: Props) {
 
     const goLoop = (now: number) => {
       if (finished || phase !== 'go') {
+        targetEl.style.willChange = 'auto'
         return
       }
 
@@ -147,6 +148,7 @@ export function NeuralReflex({ onComplete }: Props) {
         cancelAnimationFrame(rafId)
         phase = 'go'
         goStartedAt = performance.now()
+        targetEl.style.willChange = 'transform'
         renderGo()
         rafId = window.requestAnimationFrame(goLoop)
       }, readyDelay)
