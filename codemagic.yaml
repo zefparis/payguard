@@ -8,6 +8,7 @@ workflows:
 
     environment:
       xcode: latest
+      node: 22
       cocoapods: default
       ios_signing:
         distribution_type: app_store
@@ -15,8 +16,34 @@ workflows:
       vars:
         XCODE_WORKSPACE: "ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
+        VITE_API_URL: "https://hybrid-vector-api-m5xt.onrender.com"
+        VITE_TENANT_ID: "payguard-demo"
+        # VITE_HV_API_KEY is defined in the "payguard_secrets" group below (Codemagic UI)
+        APP_APPLE_ID: "__SET_IN_CODEMAGIC_UI__"
+      groups:
+        - payguard_secrets
 
     scripts:
+      - name: Generate .env.production from Codemagic env
+        script: |
+          set -euo pipefail
+          cat > .env.production <<EOF
+          VITE_API_URL=$VITE_API_URL
+          VITE_TENANT_ID=$VITE_TENANT_ID
+          VITE_HV_API_KEY=$VITE_HV_API_KEY
+          EOF
+          sed -i 's/^[[:space:]]*//' .env.production
+          echo "Generated .env.production with $(wc -l < .env.production) lines"
+
+      - name: Increment build number from App Store
+        script: |
+          set -euo pipefail
+          cd $CM_BUILD_DIR/ios/App
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_APPLE_ID" 2>/dev/null || echo "0")
+          NEXT_BUILD=$((LATEST_BUILD_NUMBER + 1))
+          agvtool new-version -all $NEXT_BUILD
+          echo "New build number: $NEXT_BUILD"
+
       - name: Install dependencies
         script: |
           set -euo pipefail
