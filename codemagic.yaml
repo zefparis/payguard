@@ -18,8 +18,7 @@ workflows:
         XCODE_SCHEME: "App"
         VITE_API_URL: "https://hybrid-vector-api-m5xt.onrender.com"
         VITE_TENANT_ID: "payguard-demo"
-        # VITE_HV_API_KEY is defined in the "payguard_secrets" group below (Codemagic UI)
-        APP_APPLE_ID: "__SET_IN_CODEMAGIC_UI__"
+        # VITE_HV_API_KEY and APP_APPLE_ID are defined in the "payguard_secrets" group below (Codemagic UI)
       groups:
         - payguard_secrets
 
@@ -36,15 +35,6 @@ workflows:
           wc -l .env.production
           grep -c "^VITE_" .env.production
 
-      - name: Increment build number from App Store
-        script: |
-          set -euo pipefail
-          cd $CM_BUILD_DIR/ios/App
-          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_APPLE_ID" 2>/dev/null || echo "0")
-          NEXT_BUILD=$((LATEST_BUILD_NUMBER + 1))
-          agvtool new-version -all $NEXT_BUILD
-          echo "New build number: $NEXT_BUILD"
-
       - name: Install dependencies
         script: |
           set -euo pipefail
@@ -55,22 +45,47 @@ workflows:
           set -euo pipefail
           npm run build
 
+      - name: Capacitor sync
+        script: |
+          set -euo pipefail
+          npx cap sync ios
+
       - name: Fix Podfile deployment target
         script: |
           set -euo pipefail
           sed -i '' "s/platform :ios, '[0-9.]*'/platform :ios, '15.0'/g" ios/App/Podfile
           grep platform ios/App/Podfile
 
-      - name: Capacitor sync
-        script: |
-          set -euo pipefail
-          npx cap sync ios
-
       - name: Install pods
         script: |
           set -euo pipefail
           cd ios/App
           pod install
+
+      - name: Force iOS deployment target
+        script: |
+          set -euo pipefail
+          cd ios/App
+          sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 14.0;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g' App.xcodeproj/project.pbxproj
+          sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g' App.xcodeproj/project.pbxproj
+          grep -n "IPHONEOS_DEPLOYMENT_TARGET" App.xcodeproj/project.pbxproj | head -5
+
+      - name: Set build number from App Store Connect
+        script: |
+          set -euo pipefail
+          echo "Fetching latest build number from App Store Connect for APP_APPLE_ID=$APP_APPLE_ID..."
+          if [ -z "${APP_APPLE_ID:-}" ] || [ "$APP_APPLE_ID" = "__SET_IN_CODEMAGIC_UI__" ]; then
+            echo "ERROR: APP_APPLE_ID not set in Codemagic environment"
+            exit 1
+          fi
+          LATEST_BUILD=$(app-store-connect get-latest-app-store-build-number "$APP_APPLE_ID")
+          echo "Latest build on App Store: $LATEST_BUILD"
+          NEXT_BUILD=$((LATEST_BUILD + 1))
+          echo "Next build number will be: $NEXT_BUILD"
+          cd $CM_BUILD_DIR/ios/App
+          agvtool new-version -all $NEXT_BUILD
+          echo "--- Verification ---"
+          agvtool what-version -terse
 
       - name: Configure signing
         script: |
@@ -79,14 +94,6 @@ workflows:
           keychain add-certificates
           xcode-project use-profiles
           security find-identity -v -p codesigning
-
-      - name: Force iOS deployment target
-        script: |
-          set -euo pipefail
-          cd ios/App
-          sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 14.0;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g' App.xcodeproj/project.pbxproj
-          sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g' App.xcodeproj/project.pbxproj
-          grep -n "IPHONEOS_DEPLOYMENT_TARGET" App.xcodeproj/project.pbxproj
 
       - name: Build IPA
         script: |
