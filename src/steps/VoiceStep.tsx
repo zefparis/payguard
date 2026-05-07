@@ -14,12 +14,30 @@ export function VoiceStep({ onComplete }: Props) {
   const [computing, setComputing] = useState(false)
 
   if (error) {
-    return <ErrorState
-      title="Microphone unavailable"
-      message="PayGuard needs microphone access to verify your voice. Please enable it in Settings."
-      onSecondaryAction={openAppSettings}
-      secondaryLabel="Open Settings"
-    />
+    if (error.kind === 'permission-denied') {
+      return (
+        <ErrorState
+          title="Microphone access required"
+          message="PayGuard needs microphone access to verify your voice. Please enable it in Settings."
+          onSecondaryAction={openAppSettings}
+          secondaryLabel="Open Settings"
+        />
+      )
+    }
+    if (error.kind === 'unavailable') {
+      return (
+        <ErrorState
+          title="No microphone detected"
+          message="Your device does not have a working microphone available."
+        />
+      )
+    }
+    return (
+      <ErrorState
+        title="Microphone unavailable"
+        message="An unexpected error occurred. Please try again."
+      />
+    )
   }
 
   const start = async () => {

@@ -9,12 +9,30 @@ export function SelfieStep({ onComplete }: Props) {
   const { videoRef, ready, error, capture } = useCamera()
 
   if (error) {
-    return <ErrorState
-      title="Camera unavailable"
-      message="PayGuard needs camera access to verify your identity. Please enable it in Settings."
-      onSecondaryAction={openAppSettings}
-      secondaryLabel="Open Settings"
-    />
+    if (error.kind === 'permission-denied') {
+      return (
+        <ErrorState
+          title="Camera access required"
+          message="PayGuard needs camera access to verify your identity. Please enable it in Settings."
+          onSecondaryAction={openAppSettings}
+          secondaryLabel="Open Settings"
+        />
+      )
+    }
+    if (error.kind === 'unavailable') {
+      return (
+        <ErrorState
+          title="No camera detected"
+          message="Your device does not have a working camera available."
+        />
+      )
+    }
+    return (
+      <ErrorState
+        title="Camera unavailable"
+        message="An unexpected error occurred. Please try again."
+      />
+    )
   }
 
   return (

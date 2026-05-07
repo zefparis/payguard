@@ -1,8 +1,13 @@
 import { useCallback, useRef, useState } from 'react'
 
+export type AudioError =
+  | { kind: 'permission-denied' }
+  | { kind: 'unavailable' }
+  | { kind: 'other'; message: string }
+
 export function useAudio() {
   const [recording, setRecording] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<AudioError | null>(null)
   const ctxRef = useRef<AudioContext | null>(null)
 
   const recordFor = useCallback(async (durationMs: number): Promise<Float32Array[]> => {
@@ -34,7 +39,17 @@ export function useAudio() {
 
       return samples
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Microphone unavailable')
+      if (err instanceof DOMException) {
+        if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+          setError({ kind: 'permission-denied' })
+        } else if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
+          setError({ kind: 'unavailable' })
+        } else {
+          setError({ kind: 'other', message: err.message })
+        }
+      } else {
+        setError({ kind: 'other', message: err instanceof Error ? err.message : 'Microphone unavailable' })
+      }
       throw err
     } finally {
       setRecording(false)
