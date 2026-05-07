@@ -27,13 +27,14 @@ workflows:
       - name: Generate .env.production from Codemagic env
         script: |
           set -euo pipefail
-          cat > .env.production <<EOF
-          VITE_API_URL=$VITE_API_URL
-          VITE_TENANT_ID=$VITE_TENANT_ID
-          VITE_HV_API_KEY=$VITE_HV_API_KEY
-          EOF
-          sed -i 's/^[[:space:]]*//' .env.production
-          echo "Generated .env.production with $(wc -l < .env.production) lines"
+          {
+            echo "VITE_API_URL=$VITE_API_URL"
+            echo "VITE_TENANT_ID=$VITE_TENANT_ID"
+            echo "VITE_HV_API_KEY=$VITE_HV_API_KEY"
+          } > .env.production
+          echo "--- .env.production generated ---"
+          wc -l .env.production
+          grep -c "^VITE_" .env.production
 
       - name: Increment build number from App Store
         script: |
