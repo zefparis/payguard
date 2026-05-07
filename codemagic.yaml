@@ -2,10 +2,8 @@ workflows:
   ios-workflow:
     name: PayGuard SA iOS
     max_build_duration: 60
-
     integrations:
       app_store_connect: Codemagic
-
     environment:
       xcode: latest
       node: 22
@@ -18,10 +16,8 @@ workflows:
         XCODE_SCHEME: "App"
         VITE_API_URL: "https://hybrid-vector-api-m5xt.onrender.com"
         VITE_TENANT_ID: "payguard-demo"
-        # VITE_HV_API_KEY and APP_APPLE_ID are defined in the "payguard_secrets" group below (Codemagic UI)
       groups:
         - payguard_secrets
-
     scripts:
       - name: Generate .env.production from Codemagic env
         script: |
@@ -70,18 +66,12 @@ workflows:
           sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g' App.xcodeproj/project.pbxproj
           grep -n "IPHONEOS_DEPLOYMENT_TARGET" App.xcodeproj/project.pbxproj | head -5
 
-      - name: Set build number from App Store Connect
+      - name: Set build number
         script: |
           set -euo pipefail
-          echo "Fetching latest build number from App Store Connect for APP_APPLE_ID=$APP_APPLE_ID..."
-          if [ -z "${APP_APPLE_ID:-}" ] || [ "$APP_APPLE_ID" = "__SET_IN_CODEMAGIC_UI__" ]; then
-            echo "ERROR: APP_APPLE_ID not set in Codemagic environment"
-            exit 1
-          fi
-          LATEST_BUILD=$(app-store-connect get-latest-app-store-build-number "$APP_APPLE_ID")
-          echo "Latest build on App Store: $LATEST_BUILD"
-          NEXT_BUILD=$((LATEST_BUILD + 1))
-          echo "Next build number will be: $NEXT_BUILD"
+          NEXT_BUILD=$((100 + ${BUILD_NUMBER:-1}))
+          echo "Codemagic BUILD_NUMBER=$BUILD_NUMBER"
+          echo "Next iOS build number will be: $NEXT_BUILD"
           cd $CM_BUILD_DIR/ios/App
           agvtool new-version -all $NEXT_BUILD
           echo "--- Verification ---"
@@ -101,17 +91,14 @@ workflows:
           xcode-project build-ipa \
             --workspace "$XCODE_WORKSPACE" \
             --scheme "$XCODE_SCHEME"
-
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
-
     publishing:
       app_store_connect:
         auth: integration
         submit_to_testflight: false
         submit_to_app_store: true
-
       email:
         recipients:
           - contact@ia-solution.fr
