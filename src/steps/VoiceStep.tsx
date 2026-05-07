@@ -5,6 +5,7 @@ import { VOICE_DURATION_MS } from '../constants/config'
 import { Button } from '../ui/Button'
 import { Spinner } from '../ui/Spinner'
 import { ErrorState } from '../ui/ErrorState'
+import { openAppSettings } from '../lib/settings'
 
 type Props = { onComplete: (embedding: number[]) => void }
 
@@ -15,7 +16,9 @@ export function VoiceStep({ onComplete }: Props) {
   if (error) {
     return <ErrorState
       title="Microphone unavailable"
-      message="Please enable microphone access in Settings to continue."
+      message="PayGuard needs microphone access to verify your voice. Please enable it in Settings."
+      onSecondaryAction={openAppSettings}
+      secondaryLabel="Open Settings"
     />
   }
 

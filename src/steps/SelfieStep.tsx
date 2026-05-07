@@ -1,6 +1,7 @@
 import { useCamera } from '../hooks/useCamera'
 import { Button } from '../ui/Button'
 import { ErrorState } from '../ui/ErrorState'
+import { openAppSettings } from '../lib/settings'
 
 type Props = { onComplete: (selfieB64: string) => void }
 
@@ -10,7 +11,9 @@ export function SelfieStep({ onComplete }: Props) {
   if (error) {
     return <ErrorState
       title="Camera unavailable"
-      message="Please enable camera access in Settings to continue."
+      message="PayGuard needs camera access to verify your identity. Please enable it in Settings."
+      onSecondaryAction={openAppSettings}
+      secondaryLabel="Open Settings"
     />
   }
 
