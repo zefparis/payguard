@@ -7,7 +7,7 @@ import { ReflexStep } from '../steps/ReflexStep'
 import { Button } from '../ui/Button'
 import { Spinner } from '../ui/Spinner'
 import { ErrorState } from '../ui/ErrorState'
-import { lookup, verify, vocalVerify, authPaymentSignals } from '../lib/api'
+import { lookup, verify, vocalVerify, authPaymentSignals, ApiError } from '../lib/api'
 import { withRetry } from '../lib/retry'
 import { TENANT_ID, MAX_ATTEMPTS } from '../constants/config'
 import { ROUTES } from '../constants/routes'
@@ -79,7 +79,21 @@ export function Pay() {
         })
       } catch (err) {
         if (cancelled) return
-        dispatch({ type: 'UPLOAD_ERROR', message: err instanceof Error ? err.message : 'Network error' })
+        let userMessage = 'Connection failed. Your data is saved. Tap Retry to submit.'
+        if (err instanceof ApiError) {
+          if (err.code === 'FACE_NOT_DETECTED') {
+            userMessage = 'No face detected. Please ensure good lighting and retry.'
+          } else if (err.code === 'NO_MATCH' || err.code === 'IDENTITY_MISMATCH') {
+            userMessage = 'Identity verification failed. Please ensure you are the enrolled worker.'
+          } else if (err.code === 'MISSING_API_KEY' || err.code === 'INVALID_API_KEY') {
+            userMessage = 'App configuration error. Please contact support.'
+          } else if (err.status >= 500) {
+            userMessage = 'Server error. Please try again in a moment.'
+          } else if (err.status === 422) {
+            userMessage = err.message
+          }
+        }
+        dispatch({ type: 'UPLOAD_ERROR', message: userMessage })
       }
     })()
 
@@ -160,8 +174,8 @@ export function Pay() {
   if (state.step === 'upload-error') {
     return (
       <ErrorState
-        title="Connection failed"
-        message="Your data is saved. Tap Retry to submit."
+        title="Upload failed"
+        message={state.uploadError ?? 'Your data is saved. Tap Retry to submit.'}
         onRetry={() => dispatch({ type: 'GO_TO_STEP', step: 'verifying' })}
         retryLabel="Retry"
       />
