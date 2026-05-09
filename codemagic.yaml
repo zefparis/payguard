@@ -171,7 +171,6 @@ workflows:
                   if (need) ActivityCompat.requestPermissions(this, perms, 1001);
 
                   getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
-                      @Override
                       public void onPermissionRequest(final PermissionRequest request) {
                           request.grant(request.getResources());
                       }
