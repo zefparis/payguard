@@ -14,6 +14,10 @@ export function useAudio() {
     setRecording(true)
     setError(null)
     try {
+      // Warm-up Android WebView media permission
+      if (navigator.mediaDevices.enumerateDevices) {
+        await navigator.mediaDevices.enumerateDevices()
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
       const ctx = new AudioCtx()
