@@ -18,8 +18,11 @@ workflows:
         script: npm ci
       - name: Build web
         script: npm run build
-      - name: Sync Capacitor
-        script: npx cap sync android
+      - name: Add and sync Capacitor Android
+        script: |
+          npm install @capacitor/android
+          npx cap add android 2>/dev/null || true
+          npx cap sync android
       - name: Build APK
         script: |
           cd android
