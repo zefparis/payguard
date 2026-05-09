@@ -56,5 +56,7 @@ export function useAudio() {
     }
   }, [])
 
-  return { recordFor, recording, error }
+  const clearError = useCallback(() => setError(null), [])
+
+  return { recordFor, recording, error, clearError }
 }

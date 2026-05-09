@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { App } from '@capacitor/app'
+import { Capacitor } from '@capacitor/core'
 import { useAudio } from '../hooks/useAudio'
 import { computeVocalEmbedding } from '../lib/audio'
 import { VOICE_DURATION_MS } from '../constants/config'
@@ -10,8 +12,20 @@ import { openAppSettings } from '../lib/settings'
 type Props = { onComplete: (embedding: number[]) => void }
 
 export function VoiceStep({ onComplete }: Props) {
-  const { recordFor, recording, error } = useAudio()
+  const { recordFor, recording, error, clearError } = useAudio()
   const [computing, setComputing] = useState(false)
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
+    const listener = App.addListener('appStateChange', (state: { isActive: boolean }) => {
+      if (state.isActive && error?.kind === 'permission-denied') {
+        clearError()
+      }
+    })
+
+    return () => { listener.then((l: { remove: () => void }) => l.remove()) }
+  }, [error, clearError])
 
   if (error) {
     if (error.kind === 'permission-denied') {
