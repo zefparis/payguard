@@ -1,51 +1,166 @@
 workflows:
+  ios-workflow:
+    name: PayGuard SA iOS
+    max_build_duration: 60
+    integrations:
+      app_store_connect: Codemagic
+    environment:
+      xcode: latest
+      node: 22
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.iasolution.payguard
+      vars:
+        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+        VITE_API_URL: "https://hybrid-vector-api-m5xt.onrender.com"
+        VITE_TENANT_ID: "payguard-demo"
+      groups:
+        - payguard_secrets
+    scripts:
+      - name: Generate .env.production from Codemagic env
+        script: |
+          set -euo pipefail
+          {
+            echo "VITE_API_URL=$VITE_API_URL"
+            echo "VITE_TENANT_ID=$VITE_TENANT_ID"
+            echo "VITE_HV_API_KEY=$VITE_HV_API_KEY"
+          } > .env.production
+          echo "--- .env.production generated ---"
+          wc -l .env.production
+          grep -c "^VITE_" .env.production
+
+      - name: Install dependencies
+        script: |
+          set -euo pipefail
+          npm install
+
+      - name: Build web assets
+        script: |
+          set -euo pipefail
+          npm run build
+
+      - name: Capacitor sync
+        script: |
+          set -euo pipefail
+          npx cap sync ios
+
+      - name: Fix Podfile deployment target
+        script: |
+          set -euo pipefail
+          sed -i '' "s/platform :ios, '[0-9.]*'/platform :ios, '15.0'/g" ios/App/Podfile
+          grep platform ios/App/Podfile
+
+      - name: Install pods
+        script: |
+          set -euo pipefail
+          cd ios/App
+          pod install
+
+      - name: Force iOS deployment target
+        script: |
+          set -euo pipefail
+          cd ios/App
+          sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 14.0;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g' App.xcodeproj/project.pbxproj
+          sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/g' App.xcodeproj/project.pbxproj
+          grep -n "IPHONEOS_DEPLOYMENT_TARGET" App.xcodeproj/project.pbxproj | head -5
+
+      - name: Set build number
+        script: |
+          set -euo pipefail
+          NEXT_BUILD=$((100 + ${BUILD_NUMBER:-1}))
+          echo "Codemagic BUILD_NUMBER=$BUILD_NUMBER"
+          echo "Next iOS build number will be: $NEXT_BUILD"
+          cd $CM_BUILD_DIR/ios/App
+          agvtool new-version -all $NEXT_BUILD
+          echo "--- Verification ---"
+          agvtool what-version -terse
+
+      - name: Configure signing
+        script: |
+          set -euo pipefail
+          keychain initialize
+          keychain add-certificates
+          xcode-project use-profiles
+          security find-identity -v -p codesigning
+
+      - name: Build IPA
+        script: |
+          set -euo pipefail
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: true
+      email:
+        recipients:
+          - contact@ia-solution.fr
+        notify:
+          success: true
+          failure: true
+
   android-apk-workflow:
     name: PayGuard SA - Android APK
     max_build_duration: 45
     environment:
       groups:
         - payguard_secrets
+      android_signing:
+        - payguard_android_keystore
       vars:
         VITE_API_URL: "https://hybrid-vector-api-m5xt.onrender.com"
         VITE_TENANT_ID: "payguard-demo"
-        PACKAGE_NAME: "com.iasolution.payguard"
-      android_signing:
-        - payguard_android_keystore
       node: v20.19.0
-      java: 21
+      java: 17
     scripts:
       - name: Install dependencies
         script: npm ci
+
       - name: Build web
         script: npm run build
+
       - name: Setup Android platform
         script: |
           npm install @capacitor/android
           npx cap add android
           npx cap sync android
 
-      - name: Patch Android config
-        script: |
-          # Upgrade AGP to 8.9.1
-          perl -i -pe "s|com.android.tools.build:gradle:8.7.2|com.android.tools.build:gradle:8.9.1|" android/build.gradle
-          # compileSdk and targetSdk to 36, minSdk to 24
-          perl -i -pe "s|compileSdkVersion = 35|compileSdkVersion = 36|" android/variables.gradle
-          perl -i -pe "s|targetSdkVersion = 35|targetSdkVersion = 36|" android/variables.gradle
-          perl -i -pe "s|minSdkVersion = 23|minSdkVersion = 24|" android/variables.gradle
-
       - name: Patch AndroidManifest
         script: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
-          perl -i -pe 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.microphone" android:required="false" />|' $MANIFEST
-          perl -i -pe 's|<application|<application android:hardwareAccelerated="true" android:usesCleartextTraffic="false"|' $MANIFEST
+          sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.microphone" android:required="false" />|' $MANIFEST
+          sed -i 's|<application|<application android:hardwareAccelerated="true" android:usesCleartextTraffic="false"|' $MANIFEST
 
       - name: Build APK
         script: |
           cd android
           chmod +x gradlew
           ./gradlew :app:assembleRelease
+
+      - name: Sign APK with jarsigner
+        script: |
+          APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          jarsigner \
+            -sigalg SHA256withRSA \
+            -digestalg SHA-256 \
+            -keystore "$CM_KEYSTORE_PATH" \
+            -storepass "$CM_KEYSTORE_PASSWORD" \
+            -keypass "$CM_KEY_PASSWORD" \
+            "$APK" \
+            "$CM_KEY_ALIAS"
+          cp "$APK" "android/app/build/outputs/apk/release/app-release.apk"
+          echo "APK signé avec succès"
+
     artifacts:
-      - android/app/build/outputs/apk/release/*.apk
+      - android/app/build/outputs/apk/release/app-release.apk
+
     publishing:
       email:
         recipients:

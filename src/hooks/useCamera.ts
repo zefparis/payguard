@@ -1,55 +1,57 @@
-import { useRef, useCallback, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { startCameraStream, stopStream, captureSelfie } from '../lib/camera'
+
+export type CameraError =
+  | { kind: 'permission-denied' }
+  | { kind: 'unavailable' }
+  | { kind: 'other'; message: string }
 
 export function useCamera() {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const [ready, setReady] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const [isInitializing, setIsInitializing] = useState(true)
+  const [ready, setReady] = useState(false)
+  const [error, setError] = useState<CameraError | null>(null)
 
   useEffect(() => {
-    let active = true
-    async function start() {
+    let cancelled = false
+    ;(async () => {
       try {
-        setIsInitializing(true)
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: 640, height: 480 }
-        })
-        if (!active) { stream.getTracks().forEach(t => t.stop()); return }
+        const stream = await startCameraStream('user')
+        if (cancelled) {
+          stopStream(stream)
+          return
+        }
         streamRef.current = stream
         if (videoRef.current) {
           videoRef.current.srcObject = stream
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play()
-            if (active) {
-              setReady(true)
-              setIsInitializing(false)
-            }
-          }
+          await videoRef.current.play()
+          setReady(true)
         }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Camera access denied. Please allow camera in browser settings.')
-        setIsInitializing(false)
+      } catch (err) {
+        if (err instanceof DOMException) {
+          if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+            setError({ kind: 'permission-denied' })
+          } else if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
+            setError({ kind: 'unavailable' })
+          } else {
+            setError({ kind: 'other', message: err.message })
+          }
+        } else {
+          setError({ kind: 'other', message: err instanceof Error ? err.message : 'Camera unavailable' })
+        }
       }
-    }
-    start()
+    })()
     return () => {
-      active = false
-      streamRef.current?.getTracks().forEach(t => t.stop())
+      cancelled = true
+      stopStream(streamRef.current)
+      streamRef.current = null
     }
   }, [])
 
-  const capture = useCallback((): string | null => {
-    const video = videoRef.current
-    if (!video || !ready) return null
-    const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth || 640
-    canvas.height = video.videoHeight || 480
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return null
-    ctx.drawImage(video, 0, 0)
-    return canvas.toDataURL('image/jpeg', 0.75)
-  }, [ready])
+  const capture = async (): Promise<string | null> => {
+    if (!videoRef.current || !ready) return null
+    return captureSelfie(videoRef.current)
+  }
 
-  return { videoRef, ready, error, capture, isInitializing }
+  return { videoRef, ready, error, capture }
 }

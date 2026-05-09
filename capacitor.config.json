@@ -1,5 +1,11 @@
 {
   "appId": "com.iasolution.payguard",
   "appName": "PayGuard",
-  "webDir": "dist"
+  "webDir": "dist",
+  "backgroundColor": "#000000",
+  "ios": {
+    "contentInset": "always",
+    "allowsLinkPreview": false,
+    "backgroundColor": "#000000"
+  }
 }
