@@ -148,21 +148,37 @@ workflows:
           cat > "$MAIN" <<'JAVAEOF'
           package com.hvguard.payguard;
 
+          import android.Manifest;
           import android.webkit.PermissionRequest;
-          import android.webkit.WebChromeClient;
           import com.getcapacitor.BridgeActivity;
+          import com.getcapacitor.BridgeWebChromeClient;
           import android.os.Bundle;
+          import androidx.core.app.ActivityCompat;
+          import androidx.core.content.ContextCompat;
+          import android.content.pm.PackageManager;
 
           public class MainActivity extends BridgeActivity {
               @Override
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
-                  getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
+                  String[] perms = { Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO };
+                  boolean need = false;
+                  for (String p : perms) {
+                      if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
+                          need = true; break;
+                      }
+                  }
+                  if (need) ActivityCompat.requestPermissions(this, perms, 1001);
+              }
+
+              @Override
+              protected BridgeWebChromeClient makeBridgeWebChromeClient() {
+                  return new BridgeWebChromeClient(this.bridge) {
                       @Override
                       public void onPermissionRequest(final PermissionRequest request) {
                           request.grant(request.getResources());
                       }
-                  });
+                  };
               }
           }
           JAVAEOF
