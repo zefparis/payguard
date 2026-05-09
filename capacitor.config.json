@@ -7,5 +7,12 @@
     "contentInset": "always",
     "allowsLinkPreview": false,
     "backgroundColor": "#000000"
+  },
+  "android": {
+    "backgroundColor": "#000000",
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false,
+    "androidScheme": "https"
   }
 }
