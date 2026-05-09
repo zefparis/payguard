@@ -134,9 +134,31 @@ workflows:
 
       - name: Patch AndroidManifest
         script: |
-          MANIFEST="android/app/src/main/AndroidManifest.xml"
-          sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.microphone" android:required="false" />|' $MANIFEST
-          sed -i 's|<application|<application android:hardwareAccelerated="true" android:usesCleartextTraffic="false"|' $MANIFEST
+          python3 << 'PYEOF'
+          path = "android/app/src/main/AndroidManifest.xml"
+          with open(path, "r") as f:
+              xml = f.read()
+
+          extra_perms = """    <uses-permission android:name="android.permission.CAMERA" />
+              <uses-permission android:name="android.permission.RECORD_AUDIO" />
+              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              <uses-feature android:name="android.hardware.camera" android:required="false" />
+              <uses-feature android:name="android.hardware.microphone" android:required="false" />"""
+
+          xml = xml.replace(
+              '<uses-permission android:name="android.permission.INTERNET" />',
+              '<uses-permission android:name="android.permission.INTERNET" />\n' + extra_perms
+          )
+          xml = xml.replace(
+              "<application",
+              '<application android:hardwareAccelerated="true" android:usesCleartextTraffic="false"'
+          )
+
+          with open(path, "w") as f:
+              f.write(xml)
+          print("AndroidManifest.xml patched")
+          PYEOF
 
       - name: Build APK
         script: |
