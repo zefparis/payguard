@@ -132,6 +132,41 @@ workflows:
           npx cap add android
           npx cap sync android
 
+      - name: Generate Android icons
+        script: |
+          # Assure le bon nom de fichier (lowercase)
+          if [ -f "resources/Icon.png" ] && [ ! -f "resources/icon.png" ]; then
+            cp resources/Icon.png resources/icon.png
+          fi
+          npm install --save-dev @capacitor/assets
+          npx capacitor-assets generate --android
+
+      - name: Patch MainActivity for WebView permissions
+        script: |
+          MAIN="android/app/src/main/java/com/hvguard/payguard/MainActivity.java"
+          mkdir -p "$(dirname "$MAIN")"
+          cat > "$MAIN" <<'JAVAEOF'
+          package com.hvguard.payguard;
+
+          import android.webkit.PermissionRequest;
+          import android.webkit.WebChromeClient;
+          import com.getcapacitor.BridgeActivity;
+          import android.os.Bundle;
+
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
+                      @Override
+                      public void onPermissionRequest(final PermissionRequest request) {
+                          request.grant(request.getResources());
+                      }
+                  });
+              }
+          }
+          JAVAEOF
+
       - name: Patch AndroidManifest
         script: |
           python3 << 'PYEOF'
