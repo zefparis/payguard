@@ -11,7 +11,7 @@ workflows:
         PACKAGE_NAME: "com.iasolution.payguard"
       android_signing:
         - payguard_android_keystore
-      node: v18
+      node: v20.19.0
       java: 17
     scripts:
       - name: Install dependencies
