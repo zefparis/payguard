@@ -142,14 +142,23 @@ workflows:
         script: |
           cd android
           chmod +x gradlew
-          ./gradlew :app:assembleRelease \
-            -Pandroid.injected.signing.store.file=$CM_KEYSTORE_PATH \
-            -Pandroid.injected.signing.store.password=$CM_KEYSTORE_PASSWORD \
-            -Pandroid.injected.signing.key.alias=$CM_KEY_ALIAS \
-            -Pandroid.injected.signing.key.password=$CM_KEY_PASSWORD
+          ./gradlew :app:assembleRelease
+
+      - name: Sign APK
+        script: |
+          APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          SIGNED="android/app/build/outputs/apk/release/app-release.apk"
+          ${ANDROID_SDK_ROOT}/build-tools/$(ls ${ANDROID_SDK_ROOT}/build-tools | sort -V | tail -1)/apksigner sign \
+            --ks $CM_KEYSTORE_PATH \
+            --ks-pass pass:$CM_KEYSTORE_PASSWORD \
+            --ks-key-alias $CM_KEY_ALIAS \
+            --key-pass pass:$CM_KEY_PASSWORD \
+            --out $SIGNED \
+            $APK
+          echo "APK signé : $SIGNED"
 
     artifacts:
-      - android/app/build/outputs/apk/release/*.apk
+      - android/app/build/outputs/apk/release/app-release.apk
 
     publishing:
       email:
