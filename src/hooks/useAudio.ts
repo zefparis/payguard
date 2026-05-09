@@ -1,4 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
+import { Camera } from '@capacitor/camera'
+
+// Camera plugin only supports 'camera'|'photos' but Android groups
+// camera and microphone permissions together at runtime
+type AnyPermissions = { permissions: string[] }
 
 export type AudioError =
   | { kind: 'permission-denied'; message?: string; name?: string }
@@ -14,9 +20,17 @@ export function useAudio() {
     setRecording(true)
     setError(null)
     try {
-      // Warm-up Android WebView media permission
-      if (navigator.mediaDevices.enumerateDevices) {
-        await navigator.mediaDevices.enumerateDevices()
+      // Sur Android natif, demande la permission micro via Capacitor
+      // avant getUserMedia pour éviter le NotAllowedError du WebView
+      if (Capacitor.getPlatform() === 'android') {
+        const result = await (Camera.requestPermissions as unknown as (opts: AnyPermissions) => Promise<Record<string, string>>)({
+          permissions: ['microphone']
+        })
+        if (result.microphone !== 'granted') {
+          setError({ kind: 'permission-denied', message: 'Microphone permission denied', name: 'NotAllowedError' })
+          setRecording(false)
+          return []
+        }
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
