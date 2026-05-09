@@ -118,7 +118,7 @@ workflows:
         VITE_API_URL: "https://hybrid-vector-api-m5xt.onrender.com"
         VITE_TENANT_ID: "payguard-demo"
       node: v22.14.0
-      java: 17
+      java: 21
     scripts:
       - name: Install dependencies
         script: npm ci
