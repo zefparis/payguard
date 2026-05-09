@@ -138,17 +138,15 @@ workflows:
           sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.microphone" android:required="false" />|' $MANIFEST
           sed -i 's|<application|<application android:hardwareAccelerated="true" android:usesCleartextTraffic="false"|' $MANIFEST
 
-      - name: Patch signing config
-        script: |
-          BUILD_GRADLE="android/app/build.gradle"
-          sed -i '/buildTypes {/i\    signingConfigs {\n        release {\n            storeFile file(System.getenv("CM_KEYSTORE_PATH") ?: "")\n            storePassword System.getenv("CM_KEYSTORE_PASSWORD") ?: ""\n            keyAlias System.getenv("CM_KEY_ALIAS") ?: ""\n            keyPassword System.getenv("CM_KEY_PASSWORD") ?: ""\n        }\n    }' $BUILD_GRADLE
-          sed -i 's/buildTypes {/buildTypes {\n        release {\n            signingConfig signingConfigs.release\n            minifyEnabled false\n        }/' $BUILD_GRADLE
-
       - name: Build APK
         script: |
           cd android
           chmod +x gradlew
-          ./gradlew :app:assembleRelease
+          ./gradlew :app:assembleRelease \
+            -Pandroid.injected.signing.store.file=$CM_KEYSTORE_PATH \
+            -Pandroid.injected.signing.store.password=$CM_KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$CM_KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$CM_KEY_PASSWORD
 
     artifacts:
       - android/app/build/outputs/apk/release/*.apk
