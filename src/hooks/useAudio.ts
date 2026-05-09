@@ -17,9 +17,13 @@ export function useAudio() {
     try {
       if (Capacitor.isNativePlatform()) {
         // Native path: use Microphone plugin
-        const permResult = await Microphone.requestPermissions()
-        if (permResult.microphone !== 'granted') {
-          setError({ kind: 'permission-denied', message: 'Microphone permission denied' })
+        let permStatus = await Microphone.checkPermissions()
+        if (permStatus.microphone !== 'granted') {
+          permStatus = await Microphone.requestPermissions()
+        }
+        if (permStatus.microphone !== 'granted') {
+          setError({ kind: 'permission-denied', message: 'Microphone permission denied', name: 'NotAllowedError' })
+          setRecording(false)
           return []
         }
 
