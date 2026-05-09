@@ -155,15 +155,16 @@ workflows:
           package com.hvguard.payguard;
 
           import android.Manifest;
+          import android.content.pm.PackageManager;
           import android.webkit.PermissionRequest;
-          import android.webkit.WebChromeClient;
           import com.getcapacitor.BridgeActivity;
+          import com.getcapacitor.BridgeWebChromeClient;
           import android.os.Bundle;
           import androidx.core.app.ActivityCompat;
           import androidx.core.content.ContextCompat;
-          import android.content.pm.PackageManager;
 
           public class MainActivity extends BridgeActivity {
+
               @Override
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
@@ -175,12 +176,19 @@ workflows:
                       }
                   }
                   if (need) ActivityCompat.requestPermissions(this, perms, 1001);
+              }
 
-                  getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
-                      public void onPermissionRequest(final PermissionRequest request) {
-                          request.grant(request.getResources());
+              @Override
+              public void onStart() {
+                  super.onStart();
+                  getBridge().getWebView().setWebChromeClient(
+                      new BridgeWebChromeClient(getBridge()) {
+                          @Override
+                          public void onPermissionRequest(final PermissionRequest request) {
+                              request.grant(request.getResources());
+                          }
                       }
-                  });
+                  );
               }
           }
           JAVAEOF
