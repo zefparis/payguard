@@ -105,3 +105,58 @@ workflows:
         notify:
           success: true
           failure: true
+
+  android-apk-workflow:
+    name: PayGuard SA - Android APK
+    max_build_duration: 45
+    environment:
+      groups:
+        - payguard_secrets
+      android_signing:
+        - payguard_android_keystore
+      vars:
+        VITE_API_URL: "https://hybrid-vector-api-m5xt.onrender.com"
+        VITE_TENANT_ID: "payguard-demo"
+      node: v20.19.0
+      java: 17
+    scripts:
+      - name: Install dependencies
+        script: npm ci
+
+      - name: Build web
+        script: npm run build
+
+      - name: Setup Android platform
+        script: |
+          npm install @capacitor/android
+          npx cap add android
+          npx cap sync android
+
+      - name: Patch AndroidManifest
+        script: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.microphone" android:required="false" />|' $MANIFEST
+          sed -i 's|<application|<application android:hardwareAccelerated="true" android:usesCleartextTraffic="false"|' $MANIFEST
+
+      - name: Patch signing config
+        script: |
+          BUILD_GRADLE="android/app/build.gradle"
+          sed -i '/buildTypes {/i\    signingConfigs {\n        release {\n            storeFile file(System.getenv("CM_KEYSTORE_PATH") ?: "")\n            storePassword System.getenv("CM_KEYSTORE_PASSWORD") ?: ""\n            keyAlias System.getenv("CM_KEY_ALIAS") ?: ""\n            keyPassword System.getenv("CM_KEY_PASSWORD") ?: ""\n        }\n    }' $BUILD_GRADLE
+          sed -i 's/buildTypes {/buildTypes {\n        release {\n            signingConfig signingConfigs.release\n            minifyEnabled false\n        }/' $BUILD_GRADLE
+
+      - name: Build APK
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease
+
+    artifacts:
+      - android/app/build/outputs/apk/release/*.apk
+
+    publishing:
+      email:
+        recipients:
+          - contact@ia-solution.fr
+        notify:
+          success: true
+          failure: true
