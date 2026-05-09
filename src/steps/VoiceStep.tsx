@@ -30,12 +30,17 @@ export function VoiceStep({ onComplete }: Props) {
   if (error) {
     if (error.kind === 'permission-denied') {
       return (
-        <ErrorState
-          title="Microphone access required"
-          message="PayGuard needs microphone access to verify your voice. Please enable it in Settings."
-          onSecondaryAction={openAppSettings}
-          secondaryLabel="Open Settings"
-        />
+        <>
+          <ErrorState
+            title="Microphone access required"
+            message="PayGuard needs microphone access to verify your voice. Please enable it in Settings."
+            onSecondaryAction={openAppSettings}
+            secondaryLabel="Open Settings"
+          />
+          <p style={{ fontSize: '0.7rem', color: 'red', wordBreak: 'break-all' }}>
+            DEBUG: {error?.message ?? 'no message'} | {error?.name ?? 'no name'}
+          </p>
+        </>
       )
     }
     if (error.kind === 'unavailable') {

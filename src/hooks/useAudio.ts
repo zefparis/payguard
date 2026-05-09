@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 
 export type AudioError =
-  | { kind: 'permission-denied' }
+  | { kind: 'permission-denied'; message?: string; name?: string }
   | { kind: 'unavailable' }
   | { kind: 'other'; message: string }
 
@@ -41,7 +41,7 @@ export function useAudio() {
     } catch (err) {
       if (err instanceof DOMException) {
         if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
-          setError({ kind: 'permission-denied' })
+          setError({ kind: 'permission-denied', message: err.message, name: err.name })
         } else if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
           setError({ kind: 'unavailable' })
         } else {
