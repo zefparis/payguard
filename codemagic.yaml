@@ -28,9 +28,10 @@ workflows:
         script: |
           # Upgrade AGP to 8.9.1
           perl -i -pe "s|com.android.tools.build:gradle:8.7.2|com.android.tools.build:gradle:8.9.1|" android/build.gradle
-          # compileSdk and targetSdk to 36
+          # compileSdk and targetSdk to 36, minSdk to 24
           perl -i -pe "s|compileSdkVersion = 35|compileSdkVersion = 36|" android/variables.gradle
           perl -i -pe "s|targetSdkVersion = 35|targetSdkVersion = 36|" android/variables.gradle
+          perl -i -pe "s|minSdkVersion = 23|minSdkVersion = 24|" android/variables.gradle
 
       - name: Patch AndroidManifest
         script: |
