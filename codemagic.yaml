@@ -155,7 +155,9 @@ workflows:
           package com.iasolution.payguard;
 
           import android.os.Bundle;
+          import android.webkit.GeolocationPermissions;
           import android.webkit.PermissionRequest;
+          import android.webkit.WebStorage;
           import com.getcapacitor.BridgeActivity;
           import com.getcapacitor.BridgeWebChromeClient;
 
@@ -163,6 +165,9 @@ workflows:
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
+                  WebStorage.getInstance().deleteAllData();
+                  GeolocationPermissions.getInstance().clearAll();
+                  getBridge().getWebView().clearCache(true);
                   getBridge().getWebView().setWebChromeClient(
                       new BridgeWebChromeClient(getBridge()) {
                           @Override
