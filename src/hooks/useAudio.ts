@@ -15,32 +15,46 @@ export function useAudio() {
   const recordFor = useCallback(async (durationMs: number): Promise<Float32Array[]> => {
     setRecording(true)
     setError(null)
+
     try {
       if (Capacitor.isNativePlatform()) {
-        // Native path: check permission then record via plugin
-        const perm = await Microphone.checkPermissions()
-        if (perm.microphone !== 'granted') {
-          setError({ kind: 'permission-denied', message: 'Microphone permission required', name: 'NotAllowedError' })
+
+        try { await Microphone.stopRecording() } catch {}
+
+        try {
+          await Microphone.startRecording()
+        } catch (startErr) {
+          const msg = startErr instanceof Error ? startErr.message : String(startErr)
+          setError({ kind: 'permission-denied', message: msg, name: 'NotAllowedError' })
           setRecording(false)
           return []
         }
 
-        await Microphone.startRecording()
         await new Promise(r => setTimeout(r, durationMs))
-        const result = await Microphone.stopRecording()
 
-        // Convert base64 audio to Float32Array[]
-        const base64 = result.base64String ?? ''
+        const result = await Microphone.stopRecording()
+        const base64 = (result as unknown as { recordDataBase64?: string }).recordDataBase64 ?? ''
+        if (!base64) return []
+
         const binary = atob(base64)
         const bytes = new Uint8Array(binary.length)
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i)
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+        const ctx = new AudioCtx()
+        try {
+          const audioBuffer = await ctx.decodeAudioData(bytes.buffer)
+          const samples: Float32Array[] = []
+          for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+            samples.push(new Float32Array(audioBuffer.getChannelData(ch)))
+          }
+          return samples
+        } finally {
+          await ctx.close()
         }
-        const floats = new Float32Array(bytes.buffer)
-        return [floats]
 
       } else {
-        // Web path: getUserMedia
+
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
         const ctx = new AudioCtx()
@@ -64,6 +78,7 @@ export function useAudio() {
         ctxRef.current = null
         return samples
       }
+
     } catch (err) {
       if (err instanceof DOMException) {
         if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
