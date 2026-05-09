@@ -138,27 +138,45 @@ workflows:
           sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.microphone" android:required="false" />|' $MANIFEST
           sed -i 's|<application|<application android:hardwareAccelerated="true" android:usesCleartextTraffic="false"|' $MANIFEST
 
+      - name: Patch signing config
+        script: |
+          python3 << 'PYEOF'
+          import re
+
+          with open('android/app/build.gradle', 'r') as f:
+              content = f.read()
+
+          signing = '''
+              signingConfigs {
+                  release {
+                      storeFile file(System.getenv("CM_KEYSTORE_PATH") ?: "/dev/null")
+                      storePassword System.getenv("CM_KEYSTORE_PASSWORD") ?: ""
+                      keyAlias System.getenv("CM_KEY_ALIAS") ?: ""
+                      keyPassword System.getenv("CM_KEY_PASSWORD") ?: ""
+                  }
+              }
+          '''
+
+          content = content.replace('    buildTypes {', signing + '    buildTypes {')
+          content = content.replace(
+              'release {\n            minifyEnabled false',
+              'release {\n            signingConfig signingConfigs.release\n            minifyEnabled false'
+          )
+
+          with open('android/app/build.gradle', 'w') as f:
+              f.write(content)
+
+          print("build.gradle patched")
+          PYEOF
+
       - name: Build APK
         script: |
           cd android
           chmod +x gradlew
           ./gradlew :app:assembleRelease
 
-      - name: Sign APK
-        script: |
-          APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
-          SIGNED="android/app/build/outputs/apk/release/app-release.apk"
-          ${ANDROID_SDK_ROOT}/build-tools/$(ls ${ANDROID_SDK_ROOT}/build-tools | sort -V | tail -1)/apksigner sign \
-            --ks $CM_KEYSTORE_PATH \
-            --ks-pass pass:$CM_KEYSTORE_PASSWORD \
-            --ks-key-alias $CM_KEY_ALIAS \
-            --key-pass pass:$CM_KEY_PASSWORD \
-            --out $SIGNED \
-            $APK
-          echo "APK signé : $SIGNED"
-
     artifacts:
-      - android/app/build/outputs/apk/release/app-release.apk
+      - android/app/build/outputs/apk/release/*.apk
 
     publishing:
       email:
