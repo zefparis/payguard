@@ -156,18 +156,22 @@ workflows:
 
           import android.Manifest;
           import android.content.pm.PackageManager;
-          import android.webkit.PermissionRequest;
-          import com.getcapacitor.BridgeActivity;
-          import com.getcapacitor.BridgeWebChromeClient;
           import android.os.Bundle;
+          import android.os.Handler;
+          import android.os.Looper;
+          import android.webkit.PermissionRequest;
           import androidx.core.app.ActivityCompat;
           import androidx.core.content.ContextCompat;
+          import com.getcapacitor.BridgeActivity;
+          import com.getcapacitor.BridgeWebChromeClient;
 
           public class MainActivity extends BridgeActivity {
 
               @Override
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
+
+                  // Runtime permissions
                   String[] perms = { Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO };
                   boolean need = false;
                   for (String p : perms) {
@@ -176,19 +180,20 @@ workflows:
                       }
                   }
                   if (need) ActivityCompat.requestPermissions(this, perms, 1001);
-              }
 
-              @Override
-              public void onStart() {
-                  super.onStart();
-                  getBridge().getWebView().setWebChromeClient(
-                      new BridgeWebChromeClient(getBridge()) {
-                          @Override
-                          public void onPermissionRequest(final PermissionRequest request) {
-                              request.grant(request.getResources());
-                          }
+                  // Set WebChromeClient AFTER Capacitor async init
+                  new Handler(Looper.getMainLooper()).post(() -> {
+                      if (getBridge() != null && getBridge().getWebView() != null) {
+                          getBridge().getWebView().setWebChromeClient(
+                              new BridgeWebChromeClient(getBridge()) {
+                                  @Override
+                                  public void onPermissionRequest(PermissionRequest request) {
+                                      request.grant(request.getResources());
+                                  }
+                              }
+                          );
                       }
-                  );
+                  });
               }
           }
           JAVAEOF
