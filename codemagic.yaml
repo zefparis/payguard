@@ -132,6 +132,12 @@ workflows:
           npx cap add android
           npx cap sync android
 
+      - name: Patch version
+        script: |
+          sed -i '' 's/versionCode 1/versionCode 5/' android/app/build.gradle
+          sed -i '' 's/versionName "1.0"/versionName "1.0.5"/' android/app/build.gradle
+          grep -E "versionCode|versionName" android/app/build.gradle
+
       - name: Generate Android icons
         script: |
           # Assure le bon nom de fichier (lowercase)
