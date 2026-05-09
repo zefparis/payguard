@@ -1,17 +1,21 @@
+// SignalBus acts as a local in-memory buffer for signal collectors.
+// Data is consumed by collectors directly (e.g. VoiceCollector.stopAndCompute)
+// rather than flushed to a remote endpoint, so no periodic flush is needed.
 class SignalBus {
   private readonly buffers = new Map<string, unknown[]>()
   private paused = false
 
-  constructor() {
-    window.setInterval(() => {
-      this.flushAll()
-    }, 1000)
-  }
-
   emit(channel: string, data: unknown): void {
+    if (this.paused) return
     const current = this.buffers.get(channel) ?? []
     current.push(data)
     this.buffers.set(channel, current)
+  }
+
+  drain(channel: string): unknown[] {
+    const buf = this.buffers.get(channel) ?? []
+    this.buffers.set(channel, [])
+    return buf
   }
 
   pause(): void {
@@ -20,20 +24,6 @@ class SignalBus {
 
   resume(): void {
     this.paused = false
-  }
-
-  private flushAll(): void {
-    if (this.paused) {
-      return
-    }
-
-    for (const [channel, buffer] of this.buffers.entries()) {
-      if (buffer.length === 0) {
-        continue
-      }
-
-      this.buffers.set(channel, [])
-    }
   }
 }
 

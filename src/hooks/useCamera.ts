@@ -12,14 +12,6 @@ export function useCamera() {
     async function start() {
       try {
         setIsInitializing(true)
-        // Trigger permission prompt explicitly with a simple request first
-        try {
-          const permStream = await navigator.mediaDevices.getUserMedia({ video: true })
-          permStream.getTracks().forEach(t => t.stop())
-        } catch {
-          throw new Error('Camera permission denied')
-        }
-
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: 640, height: 480 }
         })
@@ -29,13 +21,10 @@ export function useCamera() {
           videoRef.current.srcObject = stream
           videoRef.current.onloadedmetadata = () => {
             videoRef.current?.play()
-            // Wait for 2 seconds of loading sequence before marking as ready
-            setTimeout(() => {
-              if (active) {
-                setReady(true)
-                setIsInitializing(false)
-              }
-            }, 2000)
+            if (active) {
+              setReady(true)
+              setIsInitializing(false)
+            }
           }
         }
       } catch (e) {
@@ -59,22 +48,7 @@ export function useCamera() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
     ctx.drawImage(video, 0, 0)
-    
-    // Basic face detection check (center region should have content)
-    const imageData = ctx.getImageData(canvas.width * 0.3, canvas.height * 0.3, canvas.width * 0.4, canvas.height * 0.4)
-    const pixels = imageData.data
-    let brightness = 0
-    for (let i = 0; i < pixels.length; i += 4) {
-      brightness += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3
-    }
-    const avgBrightness = brightness / (pixels.length / 4)
-    
-    // If center region is too dark or too bright, likely no face
-    if (avgBrightness < 20 || avgBrightness > 240) {
-      console.warn('No face detected in center region')
-    }
-    
-    return canvas.toDataURL('image/jpeg', 0.9)
+    return canvas.toDataURL('image/jpeg', 0.75)
   }, [ready])
 
   return { videoRef, ready, error, capture, isInitializing }

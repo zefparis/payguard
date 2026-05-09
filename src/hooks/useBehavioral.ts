@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 export type DeviceType = 'mobile' | 'desktop' | 'unknown'
 
@@ -143,6 +143,26 @@ async function requestPermissionIfNeeded(
     return res
   } catch {
     return 'prompt'
+  }
+}
+
+/**
+ * iOS 13+: DeviceMotionEvent.requestPermission MUST be called from a user gesture
+ * (click/touch handler), otherwise it throws / resolves to 'denied'. Call this
+ * helper from the first button click of the flow, then start the hook.
+ *
+ * - iOS Safari: returns true if user accepts, false if denied/throws.
+ * - Android Chrome / desktop: returns true (no permission gate).
+ */
+export async function requestMotionPermission(): Promise<boolean> {
+  if (typeof DeviceMotionEvent === 'undefined') return false
+  const dm = DeviceMotionEvent as unknown as { requestPermission?: () => Promise<'granted' | 'denied'> }
+  if (typeof dm.requestPermission !== 'function') return true // Android / desktop
+  try {
+    const result = await dm.requestPermission()
+    return result === 'granted'
+  } catch {
+    return false
   }
 }
 
@@ -390,5 +410,14 @@ export function useBehavioral(): BehavioralController {
     }
   }, [isCapturing, isTextInputFocused])
 
-  return useMemo(() => ({ start, stop, isCapturing }), [isCapturing, start, stop])
+  const controllerRef = useRef<BehavioralController>({
+    start: async () => {},
+    stop: () => stop(),
+    isCapturing: false,
+  })
+  controllerRef.current.start = start
+  controllerRef.current.stop = stop
+  controllerRef.current.isCapturing = isCapturing
+
+  return controllerRef.current
 }

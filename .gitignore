@@ -40,7 +40,6 @@ Thumbs.db
 
 # Capacitor native platforms
 android/
-ios/
 
 .vercel
 .env*.local

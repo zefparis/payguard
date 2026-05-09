@@ -1,4 +1,15 @@
 import { useCallback, useRef, useState } from 'react'
+import {
+  clamp01,
+  mean,
+  rms,
+  toMonoFloat32,
+  resampleLinear,
+  hamming,
+  dctII,
+  createMelFilterbank,
+  spectrumFromFrame,
+} from '../lib/audio-utils'
 // NOTE: This implementation uses a lightweight MFCC-based embedding.
 // We intentionally avoid importing heavy runtimes (e.g. onnxruntime-web)
 // to keep the bundle small, especially in Capacitor builds.
@@ -17,6 +28,7 @@ type UseVoiceBiometrics = {
   isRecording: boolean
   countdownMs: number
   waveform: Uint8Array | null
+  onWaveformData: React.MutableRefObject<((data: Uint8Array) => void) | null>
 
   recordAudio: (durationMs: number) => Promise<Float32Array>
   extractMFCC: (audioData: Float32Array, sampleRate: number) => Float32Array
@@ -26,156 +38,12 @@ type UseVoiceBiometrics = {
   verifyVoice: (storedEmbedding: number[]) => Promise<VoiceVerifyResult>
 }
 
-// ---------- helpers ----------
-
-function clamp01(x: number): number {
-  return Math.max(0, Math.min(1, x))
-}
-
-function mean(arr: Float32Array): number {
-  let s = 0
-  for (let i = 0; i < arr.length; i += 1) s += arr[i]
-  return arr.length ? s / arr.length : 0
-}
-
-function rms(arr: Float32Array): number {
-  let s = 0
-  for (let i = 0; i < arr.length; i += 1) s += arr[i] * arr[i]
-  return arr.length ? Math.sqrt(s / arr.length) : 0
-}
-
-function toMonoFloat32(audioBuffer: AudioBuffer): Float32Array {
-  if (audioBuffer.numberOfChannels === 1) return audioBuffer.getChannelData(0)
-  const left = audioBuffer.getChannelData(0)
-  const right = audioBuffer.getChannelData(1)
-  const out = new Float32Array(audioBuffer.length)
-  for (let i = 0; i < out.length; i += 1) out[i] = (left[i] + right[i]) * 0.5
-  return out
-}
-
-function resampleLinear(input: Float32Array, inputRate: number, outputRate: number): Float32Array {
-  if (inputRate === outputRate) return input
-  const ratio = outputRate / inputRate
-  const outLen = Math.max(1, Math.floor(input.length * ratio))
-  const out = new Float32Array(outLen)
-  for (let i = 0; i < outLen; i += 1) {
-    const t = i / ratio
-    const i0 = Math.floor(t)
-    const i1 = Math.min(input.length - 1, i0 + 1)
-    const frac = t - i0
-    out[i] = input[i0] * (1 - frac) + input[i1] * frac
-  }
-  return out
-}
-
-function hzToMel(hz: number): number {
-  return 2595 * Math.log10(1 + hz / 700)
-}
-
-function melToHz(mel: number): number {
-  return 700 * (10 ** (mel / 2595) - 1)
-}
-
-function hamming(N: number): Float32Array {
-  const w = new Float32Array(N)
-  for (let n = 0; n < N; n += 1) {
-    w[n] = 0.54 - 0.46 * Math.cos((2 * Math.PI * n) / (N - 1))
-  }
-  return w
-}
-
-function dctII(vector: Float32Array, numCoeffs: number): Float32Array {
-  const N = vector.length
-  const out = new Float32Array(numCoeffs)
-  for (let k = 0; k < numCoeffs; k += 1) {
-    let sum = 0
-    for (let n = 0; n < N; n += 1) {
-      sum += vector[n] * Math.cos((Math.PI * k * (2 * n + 1)) / (2 * N))
-    }
-    out[k] = sum
-  }
-  return out
-}
-
-function createMelFilterbank(
-  sampleRate: number,
-  fftSize: number,
-  numFilters: number,
-  fMin = 20,
-  fMax = 8000
-): Float32Array[] {
-  const nyquist = sampleRate / 2
-  const maxHz = Math.min(fMax, nyquist)
-
-  const melMin = hzToMel(fMin)
-  const melMax = hzToMel(maxHz)
-  const melPoints: number[] = []
-  for (let i = 0; i < numFilters + 2; i += 1) {
-    melPoints.push(melMin + (i / (numFilters + 1)) * (melMax - melMin))
-  }
-  const hzPoints = melPoints.map(m => melToHz(m))
-  const binPoints = hzPoints.map(hz => Math.floor(((fftSize + 1) * hz) / sampleRate))
-
-  const filters: Float32Array[] = []
-  const numBins = Math.floor(fftSize / 2) + 1
-
-  for (let m = 1; m <= numFilters; m += 1) {
-    const f = new Float32Array(numBins)
-    const left = binPoints[m - 1]
-    const center = binPoints[m]
-    const right = binPoints[m + 1]
-
-    for (let k = left; k < center; k += 1) {
-      if (k >= 0 && k < numBins) f[k] = (k - left) / Math.max(1, center - left)
-    }
-    for (let k = center; k < right; k += 1) {
-      if (k >= 0 && k < numBins) f[k] = (right - k) / Math.max(1, right - center)
-    }
-    filters.push(f)
-  }
-  return filters
-}
-
-// Naive magnitude spectrum using AnalyserNode’s FFT (works without external deps).
-// This is not as precise as an offline FFT implementation but is sufficient for
-// the lightweight embedding prototype.
-function spectrumFromFrame(frame: Float32Array, sampleRate: number, fftSize: number): Float32Array {
-  const ctx = new OfflineAudioContext(1, fftSize, sampleRate)
-  const buffer = ctx.createBuffer(1, fftSize, sampleRate)
-  buffer.getChannelData(0).set(frame)
-  const src = ctx.createBufferSource()
-  src.buffer = buffer
-  const analyser = ctx.createAnalyser()
-  analyser.fftSize = fftSize
-  src.connect(analyser)
-  analyser.connect(ctx.destination)
-  src.start()
-  // Render is async; but OfflineAudioContext render is required.
-  // We can’t await here in a sync function, so we approximate by returning
-  // time-domain energy. For MFCC we actually need spectrum, so we will compute
-  // a simple autocorrelation-based proxy: absolute value of DFT via direct sum.
-
-  const numBins = Math.floor(fftSize / 2) + 1
-  const out = new Float32Array(numBins)
-  // Direct DFT magnitude (O(N^2)) but N is small (~512). This is acceptable for 2s audio.
-  for (let k = 0; k < numBins; k += 1) {
-    let re = 0
-    let im = 0
-    const w = (2 * Math.PI * k) / fftSize
-    for (let n = 0; n < fftSize; n += 1) {
-      const x = frame[n]
-      re += x * Math.cos(w * n)
-      im -= x * Math.sin(w * n)
-    }
-    out[k] = Math.sqrt(re * re + im * im)
-  }
-  return out
-}
 
 export function useVoiceBiometrics(): UseVoiceBiometrics {
   const [isRecording, setIsRecording] = useState(false)
   const [countdownMs, setCountdownMs] = useState(0)
   const [waveform, setWaveform] = useState<Uint8Array | null>(null)
+  const onWaveformDataRef = useRef<((data: Uint8Array) => void) | null>(null)
 
   const analyserRef = useRef<AnalyserNode | null>(null)
   const rafRef = useRef<number | null>(null)
@@ -194,7 +62,11 @@ export function useVoiceBiometrics(): UseVoiceBiometrics {
 
     const tick = () => {
       analyser.getByteTimeDomainData(data)
-      setWaveform(new Uint8Array(data))
+      if (onWaveformDataRef.current) {
+        onWaveformDataRef.current(data)
+      } else {
+        setWaveform(new Uint8Array(data))
+      }
       rafRef.current = requestAnimationFrame(tick)
     }
 
@@ -381,6 +253,7 @@ export function useVoiceBiometrics(): UseVoiceBiometrics {
     isRecording,
     countdownMs,
     waveform,
+    onWaveformData: onWaveformDataRef,
     recordAudio,
     extractMFCC,
     computeSimilarity,
