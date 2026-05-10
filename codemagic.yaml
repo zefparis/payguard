@@ -157,8 +157,10 @@ workflows:
           import android.Manifest;
           import android.content.pm.PackageManager;
           import android.os.Bundle;
+          import android.util.Log;
           import android.webkit.GeolocationPermissions;
           import android.webkit.PermissionRequest;
+          import android.webkit.WebSettings;
           import android.webkit.WebStorage;
           import androidx.activity.result.ActivityResultLauncher;
           import androidx.activity.result.contract.ActivityResultContracts;
@@ -167,30 +169,56 @@ workflows:
           import com.getcapacitor.BridgeWebChromeClient;
 
           public class MainActivity extends BridgeActivity {
+              private static final String TAG = "PayGuard";
               private ActivityResultLauncher<String> audioPermLauncher;
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
+                  Log.d(TAG, "onCreate START");
+
                   audioPermLauncher = registerForActivityResult(
                       new ActivityResultContracts.RequestPermission(),
-                      granted -> {}
+                      granted -> Log.d(TAG, "RECORD_AUDIO permission result: " + granted)
                   );
+
                   super.onCreate(savedInstanceState);
+
+                  // Clear any cached WebView permission denials
                   WebStorage.getInstance().deleteAllData();
                   GeolocationPermissions.getInstance().clearAll();
                   getBridge().getWebView().clearCache(true);
+
+                  // Ensure media playback doesn't require user gesture
+                  WebSettings ws = getBridge().getWebView().getSettings();
+                  ws.setMediaPlaybackRequiresUserGesture(false);
+                  Log.d(TAG, "WebSettings mediaPlaybackRequiresUserGesture=false");
+
+                  // Override WebChromeClient to auto-grant WebView permission requests
                   getBridge().getWebView().setWebChromeClient(
                       new BridgeWebChromeClient(getBridge()) {
                           @Override
                           public void onPermissionRequest(final PermissionRequest request) {
-                              runOnUiThread(() -> request.grant(request.getResources()));
+                              String[] resources = request.getResources();
+                              StringBuilder sb = new StringBuilder();
+                              for (String r : resources) sb.append(r).append(", ");
+                              Log.d(TAG, "onPermissionRequest: " + sb.toString());
+                              runOnUiThread(() -> {
+                                  request.grant(resources);
+                                  Log.d(TAG, "onPermissionRequest: GRANTED");
+                              });
                           }
                       }
                   );
-                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                          != PackageManager.PERMISSION_GRANTED) {
+
+                  // Request RECORD_AUDIO at runtime if not already granted
+                  boolean hasAudio = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                          == PackageManager.PERMISSION_GRANTED;
+                  Log.d(TAG, "RECORD_AUDIO already granted: " + hasAudio);
+                  if (!hasAudio) {
                       audioPermLauncher.launch(Manifest.permission.RECORD_AUDIO);
                   }
+
+                  Log.d(TAG, "onCreate END");
               }
           }
           JAVAEOF

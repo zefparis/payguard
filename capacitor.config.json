@@ -13,5 +13,8 @@
     "allowMixedContent": false,
     "captureInput": true,
     "webContentsDebuggingEnabled": true
+  },
+  "server": {
+    "androidScheme": "https"
   }
 }
