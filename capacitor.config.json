@@ -12,7 +12,7 @@
     "backgroundColor": "#000000",
     "allowMixedContent": false,
     "captureInput": true,
-    "webContentsDebuggingEnabled": true
+    "webContentsDebuggingEnabled": false
   },
   "server": {
     "androidScheme": "https"
