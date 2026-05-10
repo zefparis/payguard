@@ -40,8 +40,11 @@ lerna-debug.log*
 # OS
 Thumbs.db
 
-# Capacitor native platforms
-android/
+# Capacitor native platforms — track source, ignore build artifacts
+android/app/build/
+android/.gradle/
+android/build/
+android/capacitor-cordova-android-plugins/build/
 
 .vercel
 .env*.local
