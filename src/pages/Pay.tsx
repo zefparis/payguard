@@ -105,11 +105,11 @@ export function Pay() {
     return (
       <div style={{ padding: 32 }}>
         <h2 style={{ marginBottom: 24 }}>Confirm payment</h2>
-        <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" style={inputStyle} />
-        <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name" style={inputStyle} />
-        <input value={amount} onChange={e => setAmount(e.target.value.replace(/\D/g, ''))} placeholder="Amount (ZAR)" inputMode="numeric" style={inputStyle} />
-        <input value={period} onChange={e => setPeriod(e.target.value)} placeholder="Period (e.g. May 2026)" style={inputStyle} />
-        <input value={employer} onChange={e => setEmployer(e.target.value)} placeholder="Employer / Site" style={inputStyle} />
+        <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" autoCapitalize="words" autoComplete="given-name" style={inputStyle} />
+        <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name" autoCapitalize="words" autoComplete="family-name" style={inputStyle} />
+        <input value={amount} onChange={e => setAmount(e.target.value.replace(/\D/g, ''))} placeholder="Amount (ZAR)" inputMode="numeric" type="text" style={inputStyle} />
+        <input value={period} onChange={e => setPeriod(e.target.value)} placeholder="Period (e.g. May 2026)" autoCapitalize="words" style={inputStyle} />
+        <input value={employer} onChange={e => setEmployer(e.target.value)} placeholder="Employer / Site" autoCapitalize="words" style={inputStyle} />
         {identityError && <p style={{ color: 'var(--red)', marginBottom: 12 }}>{identityError}</p>}
         <Button disabled={!valid || lookingUp} onClick={submitIdentity}>
           {lookingUp ? 'Looking up...' : 'Continue'}
