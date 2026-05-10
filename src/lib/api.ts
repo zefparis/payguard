@@ -95,6 +95,30 @@ export async function authPaymentSignals(
   return res.json()
 }
 
+export async function payVerify(payload: {
+  selfie_b64: string
+  first_name: string
+  last_name: string
+  student_id: string
+  vocal_embedding: number[]
+  reaction_ms: number
+}): Promise<{ decision: Decision; trust_score: number; verified: boolean; similarity: number }> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS * 2)
+  try {
+    const res = await fetch(`${API_URL}/payguard/pay-verify`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ ...payload, tenant_id: TENANT_ID }),
+      signal: controller.signal,
+    })
+    if (!res.ok) throw await parseError(res, `pay-verify failed: ${res.status}`)
+    return res.json()
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function lookup(payload: {
   first_name: string
   last_name: string

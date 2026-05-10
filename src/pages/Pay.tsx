@@ -7,9 +7,9 @@ import { ReflexStep } from '../steps/ReflexStep'
 import { Button } from '../ui/Button'
 import { Spinner } from '../ui/Spinner'
 import { ErrorState } from '../ui/ErrorState'
-import { lookup, verify, vocalVerify, authPaymentSignals, ApiError } from '../lib/api'
+import { lookup, payVerify, ApiError } from '../lib/api'
 import { withRetry } from '../lib/retry'
-import { TENANT_ID, MAX_ATTEMPTS } from '../constants/config'
+import { MAX_ATTEMPTS } from '../constants/config'
 import { ROUTES } from '../constants/routes'
 
 export function Pay() {
@@ -31,34 +31,14 @@ export function Pay() {
     let cancelled = false
     ;(async () => {
       try {
-        await withRetry(
-          () => verify({
+        const result = await withRetry(
+          () => payVerify({
             selfie_b64: c.selfieB64!,
             first_name: state.firstName,
             last_name: state.lastName,
             student_id: state.studentId!,
-          }),
-          MAX_ATTEMPTS,
-        )
-        if (cancelled) return
-
-        const vocalResp = await withRetry(
-          () => vocalVerify({
-            first_name: state.firstName,
-            last_name: state.lastName,
             vocal_embedding: c.vocalEmbedding!,
-          }),
-          MAX_ATTEMPTS,
-        )
-        if (cancelled) return
-
-        const result = await withRetry(
-          () => authPaymentSignals({
-            student_id: state.studentId!,
-            vocal_score: vocalResp.vocal_score,
-            behavioral_score: 0.5,
             reaction_ms: c.reactionMs!,
-            tenant_id: TENANT_ID,
           }),
           MAX_ATTEMPTS,
         )
