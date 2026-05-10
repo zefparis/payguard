@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { REFLEX_ROUNDS } from '../constants/config'
 
-type Phase = 'ready' | 'wait' | 'go' | 'done'
+type Phase = 'ready' | 'wait' | 'go' | 'too_early' | 'done'
 
 type Props = { onComplete: (avgMs: number) => void }
 
@@ -9,6 +9,7 @@ export function ReflexStep({ onComplete }: Props) {
   const [phase, setPhase] = useState<Phase>('ready')
   const [round, setRound] = useState(0)
   const [results, setResults] = useState<number[]>([])
+  const [lastMs, setLastMs] = useState<number | null>(null)
   const goAtRef = useRef<number>(0)
   const timerRef = useRef<number | null>(null)
 
@@ -24,19 +25,26 @@ export function ReflexStep({ onComplete }: Props) {
     }
   }, [phase])
 
+  useEffect(() => {
+    if (phase !== 'too_early') return
+    const t = window.setTimeout(() => setPhase('ready'), 1200)
+    return () => window.clearTimeout(t)
+  }, [phase])
+
   const handleTap = () => {
     if (phase === 'ready') {
+      setLastMs(null)
       setPhase('wait')
       return
     }
     if (phase === 'wait') {
-      // Tapped too early — reset round
       if (timerRef.current) window.clearTimeout(timerRef.current)
-      setPhase('ready')
+      setPhase('too_early')
       return
     }
     if (phase === 'go') {
       const ms = performance.now() - goAtRef.current
+      setLastMs(Math.round(ms))
       const next = [...results, ms]
       setResults(next)
       if (next.length >= REFLEX_ROUNDS) {
@@ -51,36 +59,70 @@ export function ReflexStep({ onComplete }: Props) {
   }
 
   const bg =
-    phase === 'go' ? 'var(--green)' :
-    phase === 'wait' ? '#5a3030' :
-    'var(--system-background-secondary)'
+    phase === 'go' ? '#34c759' :
+    phase === 'wait' ? '#b91c1c' :
+    phase === 'too_early' ? '#ff9f0a' :
+    '#2563eb'
 
   const label =
-    phase === 'ready' ? `Round ${round + 1} of ${REFLEX_ROUNDS} — tap to start` :
-    phase === 'wait' ? 'Wait for green...' :
-    phase === 'go' ? 'TAP NOW' :
+    phase === 'ready' ? 'TAP TO START' :
+    phase === 'wait' ? 'WAIT...' :
+    phase === 'go' ? 'TAP NOW!' :
+    phase === 'too_early' ? 'TOO EARLY!' :
     'Done'
+
+  const hint =
+    phase === 'ready' ? 'Tap the button, then wait for it to turn green.' :
+    phase === 'wait' ? 'Do NOT tap yet. Wait until the button turns green.' :
+    phase === 'go' ? 'Tap as fast as you can!' :
+    phase === 'too_early' ? 'You tapped before it turned green. Try again.' :
+    'Processing...'
 
   return (
     <div style={{ textAlign: 'center', padding: 24 }}>
-      <h2 style={{ marginBottom: 16 }}>Reflex test</h2>
+      <h2 style={{ marginBottom: 4 }}>Reflex test</h2>
+      <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 8 }}>
+        Round {round + 1} of {REFLEX_ROUNDS}
+      </p>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
+        {Array.from({ length: REFLEX_ROUNDS }).map((_, i) => (
+          <div key={i} style={{
+            width: 10, height: 10, borderRadius: 5,
+            background: i < results.length ? 'var(--green)' : i === round ? 'var(--blue)' : 'var(--separator)',
+          }} />
+        ))}
+      </div>
+
+      <p style={{ color: 'var(--secondary-label)', fontSize: 15, marginBottom: 16, minHeight: 40 }}>
+        {hint}
+      </p>
+
       <button
         onClick={handleTap}
         style={{
           width: '100%',
-          height: 280,
+          height: 260,
           borderRadius: 20,
           border: 'none',
           background: bg,
-          color: '#fff',
-          fontSize: 24,
-          fontWeight: 700,
+          color: '#ffffff',
+          fontSize: 28,
+          fontWeight: 800,
+          letterSpacing: 1,
           cursor: 'pointer',
           touchAction: 'manipulation',
+          transition: 'background 0.15s ease',
         }}
       >
         {label}
       </button>
+
+      {lastMs !== null && phase === 'ready' && (
+        <p style={{ marginTop: 12, fontSize: 14, color: 'var(--green)' }}>
+          Last: {lastMs} ms
+        </p>
+      )}
     </div>
   )
 }

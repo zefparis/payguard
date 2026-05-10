@@ -31,7 +31,21 @@ export function Result() {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: 32 }}>
       <div style={{ textAlign: 'center', marginTop: 64 }}>
-        <div style={{ width: 96, height: 96, borderRadius: 48, background: color, opacity: 0.12, margin: '0 auto 24px' }} />
+        <div style={{ width: 96, height: 96, borderRadius: 48, background: color, opacity: 0.12, margin: '0 auto 24px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+          {isApproved ? (
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          ) : isRejected ? (
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          ) : (
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+            </svg>
+          )}
+        </div>
         <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 12, color }}>{title}</h1>
         <p style={{ color: 'var(--secondary-label)', fontSize: 16 }}>{subtitle}</p>
 
