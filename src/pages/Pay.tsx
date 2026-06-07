@@ -21,6 +21,7 @@ export function Pay() {
   const [employer, setEmployer] = useState('')
   const [lookingUp, setLookingUp] = useState(false)
   const [identityError, setIdentityError] = useState<string | null>(null)
+  const [showNumpad, setShowNumpad] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -107,7 +108,30 @@ export function Pay() {
         <h2 style={{ marginBottom: 24 }}>Confirm payment</h2>
         <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" autoCapitalize="words" autoComplete="given-name" style={inputStyle} />
         <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name" autoCapitalize="words" autoComplete="family-name" style={inputStyle} />
-        <input value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, ''))} placeholder="Amount (ZAR)" type="text" inputMode="numeric" pattern="[0-9]*" onFocus={e => { e.target.type = 'tel'; setTimeout(() => { e.target.type = 'text'; e.target.inputMode = 'numeric'; }, 50); }} style={inputStyle} />
+        <div
+          onClick={() => setShowNumpad(true)}
+          style={{ ...inputStyle, display: 'flex', alignItems: 'center', cursor: 'pointer', color: amount ? 'var(--label)' : 'var(--secondary-label)', userSelect: 'none' }}
+        >
+          {amount || 'Amount (ZAR)'}
+        </div>
+        {showNumpad && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.4)' }} onClick={() => setShowNumpad(false)}>
+            <div onClick={e => e.stopPropagation()} style={{ background: 'var(--system-background)', borderRadius: '16px 16px 0 0', padding: '16px 12px env(safe-area-inset-bottom, 12px)' }}>
+              <div style={{ textAlign: 'center', fontSize: 28, fontWeight: 700, marginBottom: 16, minHeight: 40 }}>{amount || '0'} <span style={{ fontSize: 14, fontWeight: 400, color: 'var(--secondary-label)' }}>ZAR</span></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+                {['1','2','3','4','5','6','7','8','9','','0','⌫'].map(k => (
+                  <button
+                    key={k}
+                    onClick={() => { if (k === '⌫') setAmount(prev => prev.slice(0,-1)); else if (k) setAmount(prev => prev.length < 7 ? prev + k : prev); }}
+                    disabled={!k}
+                    style={{ padding: 16, fontSize: 22, fontWeight: 600, border: 'none', borderRadius: 12, background: k ? 'var(--system-background-secondary)' : 'transparent', color: 'var(--label)', cursor: k ? 'pointer' : 'default' }}
+                  >{k}</button>
+                ))}
+              </div>
+              <button onClick={() => setShowNumpad(false)} style={{ width: '100%', marginTop: 12, padding: 14, fontSize: 16, fontWeight: 700, border: 'none', borderRadius: 12, background: 'var(--green)', color: '#fff', cursor: 'pointer' }}>Done</button>
+            </div>
+          </div>
+        )}
         <input value={period} onChange={e => setPeriod(e.target.value)} placeholder="Period (e.g. May 2026)" autoCapitalize="words" style={inputStyle} />
         <input value={employer} onChange={e => setEmployer(e.target.value)} placeholder="Employer / Site" autoCapitalize="words" style={inputStyle} />
         {identityError && <p style={{ color: 'var(--red)', marginBottom: 12 }}>{identityError}</p>}
