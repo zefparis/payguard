@@ -1,6 +1,6 @@
 {
-  "appId": "com.iasolution.payguard",
-  "appName": "PayGuard",
+  "appId": "com.iasolution.payguard.unipay",
+  "appName": "UniPay Guard",
   "webDir": "dist",
   "backgroundColor": "#000000",
   "ios": {

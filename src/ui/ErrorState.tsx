@@ -13,7 +13,7 @@ export function ErrorState({
   title,
   message,
   onRetry,
-  retryLabel = 'Retry',
+  retryLabel = 'Réessayer',
   onSecondaryAction,
   secondaryLabel,
 }: Props) {

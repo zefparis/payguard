@@ -37,9 +37,9 @@ export function StroopStep({ onComplete }: Props) {
 
   return (
     <div style={{ textAlign: 'center', padding: 24 }}>
-      <h2 style={{ marginBottom: 8 }}>Color match</h2>
+      <h2 style={{ marginBottom: 8 }}>Couleur</h2>
       <p style={{ color: 'var(--secondary-label)', marginBottom: 24 }}>
-        Tap the COLOR (not the word). Round {round + 1} of {STROOP_ROUNDS}.
+        Appuyez sur la couleur. Tour {round + 1} sur {STROOP_ROUNDS}.
       </p>
       <div
         style={{

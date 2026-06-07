@@ -8,14 +8,14 @@ export function Home() {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: 32 }}>
       <div style={{ textAlign: 'center', marginTop: 64 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 12 }}>PayGuard</h1>
+        <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 12 }}>UniPay Guard</h1>
         <p style={{ color: 'var(--secondary-label)', fontSize: 16 }}>
-          Biometric payment confirmation for workers.
+          Confirmation biométrique des paiements.
         </p>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
-        <Button onClick={() => navigate(ROUTES.PAY)}>Confirm a payment</Button>
-        <Button variant="secondary" onClick={() => navigate(ROUTES.ENROLL)}>Enroll a worker</Button>
+        <Button onClick={() => navigate(ROUTES.PAY)}>Payer</Button>
+        <Button variant="secondary" onClick={() => navigate(ROUTES.ENROLL)}>S'inscrire</Button>
       </div>
       <div style={{ marginTop: 32, textAlign: 'center' }}>
         <button
@@ -31,7 +31,7 @@ export function Home() {
             padding: 8,
           }}
         >
-          Privacy Policy
+          Politique de confidentialité
         </button>
       </div>
     </div>

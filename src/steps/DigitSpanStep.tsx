@@ -42,9 +42,9 @@ export function DigitSpanStep({ onComplete }: Props) {
 
   return (
     <div style={{ textAlign: 'center', padding: 24 }}>
-      <h2 style={{ marginBottom: 8 }}>Memory check</h2>
+      <h2 style={{ marginBottom: 8 }}>Mémoire</h2>
       <p style={{ color: 'var(--secondary-label)', marginBottom: 24 }}>
-        Round {round + 1} of {DIGIT_SPAN_ROUNDS}
+        Tour {round + 1} sur {DIGIT_SPAN_ROUNDS}
       </p>
       {phase === 'show' && (
         <div style={{ fontSize: 56, fontWeight: 700, letterSpacing: 8, margin: '40px 0' }}>
@@ -57,7 +57,7 @@ export function DigitSpanStep({ onComplete }: Props) {
             type="tel"
             value={input}
             onChange={e => setInput(e.target.value.replace(/\D/g, ''))}
-            placeholder="Enter the digits"
+            placeholder="Entrez les chiffres"
             inputMode="numeric"
             autoFocus
             style={{
@@ -73,7 +73,7 @@ export function DigitSpanStep({ onComplete }: Props) {
               letterSpacing: 4,
             }}
           />
-          <Button disabled={input.length === 0} onClick={submit}>Submit</Button>
+          <Button disabled={input.length === 0} onClick={submit}>Valider</Button>
         </>
       )}
     </div>

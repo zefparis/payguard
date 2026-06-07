@@ -32,13 +32,13 @@ export function VoiceStep({ onComplete }: Props) {
       return (
         <>
           <ErrorState
-            title="Microphone access required"
-            message="PayGuard needs microphone access to verify your voice. Please enable it in Settings."
+            title="Accès micro requis"
+            message="Autorisez le micro pour vérifier votre voix."
             onSecondaryAction={openAppSettings}
-            secondaryLabel="Open Settings"
+            secondaryLabel="Ouvrir les réglages"
           />
           <p style={{ fontSize: '0.7rem', color: 'red', wordBreak: 'break-all' }}>
-            DEBUG: {error?.message ?? 'no message'} | {error?.name ?? 'no name'}
+            DEBUG : {error?.message ?? 'aucun message'} | {error?.name ?? 'aucun nom'}
           </p>
         </>
       )
@@ -46,15 +46,15 @@ export function VoiceStep({ onComplete }: Props) {
     if (error.kind === 'unavailable') {
       return (
         <ErrorState
-          title="No microphone detected"
-          message="Your device does not have a working microphone available."
+          title="Aucun micro détecté"
+          message="Aucun micro disponible sur cet appareil."
         />
       )
     }
     return (
       <ErrorState
-        title="Microphone unavailable"
-        message="An unexpected error occurred. Please try again."
+        title="Micro indisponible"
+        message="Une erreur est survenue. Réessayez."
       />
     )
   }
@@ -69,10 +69,10 @@ export function VoiceStep({ onComplete }: Props) {
 
   return (
     <div style={{ textAlign: 'center', padding: 24 }}>
-      <h2 style={{ marginBottom: 16 }}>Voice check</h2>
+      <h2 style={{ marginBottom: 16 }}>Vérification vocale</h2>
       <p style={{ color: 'var(--secondary-label)', marginBottom: 24 }}>
-        Read this sentence aloud:<br />
-        <strong style={{ color: 'var(--label)' }}>"My voice is my passport, verify me."</strong>
+        Lisez cette phrase :<br />
+        <strong style={{ color: 'var(--label)' }}>"Ma voix confirme mon identité."</strong>
       </p>
       {(recording || computing) && (
         <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'center' }}>
@@ -80,7 +80,7 @@ export function VoiceStep({ onComplete }: Props) {
         </div>
       )}
       <Button disabled={recording || computing} onClick={start}>
-        {recording ? 'Recording...' : computing ? 'Processing...' : 'Start'}
+        {recording ? 'Enregistrement...' : computing ? 'Traitement...' : 'Démarrer'}
       </Button>
     </div>
   )

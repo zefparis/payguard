@@ -12,34 +12,34 @@ export function SelfieStep({ onComplete }: Props) {
     if (error.kind === 'permission-denied') {
       return (
         <ErrorState
-          title="Camera access required"
-          message="PayGuard needs camera access to verify your identity. Please enable it in Settings."
+          title="Accès caméra requis"
+          message="Autorisez la caméra pour vérifier votre identité."
           onSecondaryAction={openAppSettings}
-          secondaryLabel="Open Settings"
+          secondaryLabel="Ouvrir les réglages"
         />
       )
     }
     if (error.kind === 'unavailable') {
       return (
         <ErrorState
-          title="No camera detected"
-          message="Your device does not have a working camera available."
+          title="Aucune caméra détectée"
+          message="Aucune caméra disponible sur cet appareil."
         />
       )
     }
     return (
       <ErrorState
-        title="Camera unavailable"
-        message="An unexpected error occurred. Please try again."
+        title="Caméra indisponible"
+        message="Une erreur est survenue. Réessayez."
       />
     )
   }
 
   return (
     <div style={{ textAlign: 'center', padding: 24 }}>
-      <h2 style={{ marginBottom: 16 }}>Take a selfie</h2>
+      <h2 style={{ marginBottom: 16 }}>Prenez un selfie</h2>
       <p style={{ color: 'var(--secondary-label)', marginBottom: 24 }}>
-        Center your face in the frame.
+        Placez votre visage au centre.
       </p>
       <video
         ref={videoRef}
@@ -55,7 +55,7 @@ export function SelfieStep({ onComplete }: Props) {
           if (b64) onComplete(b64)
         }}
       >
-        Capture
+        Capturer
       </Button>
     </div>
   )

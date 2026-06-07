@@ -2,10 +2,7 @@ import { useEffect, useReducer, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { flowReducer, initialFlowState } from '../state/flowReducer'
 import { SelfieStep } from '../steps/SelfieStep'
-import { VoiceStep } from '../steps/VoiceStep'
 import { ReflexStep } from '../steps/ReflexStep'
-import { DigitSpanStep } from '../steps/DigitSpanStep'
-import { StroopStep } from '../steps/StroopStep'
 import { Button } from '../ui/Button'
 import { Spinner } from '../ui/Spinner'
 import { ErrorState } from '../ui/ErrorState'
@@ -29,7 +26,7 @@ export function Enroll() {
   useEffect(() => {
     if (state.step !== 'verifying') return
     const c = state.captured
-    if (!c.selfieB64 || !c.vocalEmbedding || c.reactionMs == null || c.digitSpanScore == null || c.stroopAccuracy == null) return
+    if (!c.selfieB64 || c.reactionMs == null) return
 
     let cancelled = false
     ;(async () => {
@@ -42,10 +39,6 @@ export function Enroll() {
             email: email || undefined,
             tenant_id: TENANT_ID,
             cognitive_baseline: {
-              vocal_embedding: c.vocalEmbedding!,
-              vocal_quality: 1,
-              digit_span_score: c.digitSpanScore!,
-              stroop_accuracy: c.stroopAccuracy!,
               reflex_ms: c.reactionMs!,
             },
           }),
@@ -57,14 +50,14 @@ export function Enroll() {
         navigate(ROUTES.RESULT, { state: { decision: 'APPROVED', context: 'enroll', studentId: result.student_id } })
       } catch (err) {
         if (cancelled) return
-        let userMessage = 'Connection failed. Your data is saved. Tap Retry to submit.'
+        let userMessage = 'Erreur de connexion. Vos données sont sauvegardées.'
         if (err instanceof ApiError) {
           if (err.code === 'FACE_NOT_DETECTED') {
-            userMessage = 'No face detected. Please ensure good lighting and your face is clearly visible, then retry.'
+            userMessage = 'Visage non détecté. Placez votre visage dans le cadre.'
           } else if (err.code === 'MISSING_API_KEY' || err.code === 'INVALID_API_KEY') {
-            userMessage = 'App configuration error. Please contact support.'
+            userMessage = 'Erreur de configuration. Contactez le support.'
           } else if (err.status >= 500) {
-            userMessage = 'Server error. Please try again in a moment.'
+            userMessage = 'Erreur serveur. Réessayez dans un instant.'
           } else if (err.status === 422) {
             userMessage = err.message
           }
@@ -79,23 +72,23 @@ export function Enroll() {
   if (state.step === 'identity') {
     return (
       <div style={{ padding: 32 }}>
-        <h2 style={{ marginBottom: 24 }}>Worker details</h2>
+        <h2 style={{ marginBottom: 24 }}>Informations utilisateur</h2>
         <input
           value={firstName}
           onChange={e => setFirstName(e.target.value)}
-          placeholder="First name"
+          placeholder="Prénom"
           style={inputStyle}
         />
         <input
           value={lastName}
           onChange={e => setLastName(e.target.value)}
-          placeholder="Last name"
+          placeholder="Nom"
           style={inputStyle}
         />
         <input
           value={email}
           onChange={e => setEmail(e.target.value)}
-          placeholder="Email (optional)"
+          placeholder="Email (facultatif)"
           type="email"
           style={inputStyle}
         />
@@ -106,7 +99,7 @@ export function Enroll() {
             dispatch({ type: 'GO_TO_STEP', step: 'selfie' })
           }}
         >
-          Continue
+          Continuer
         </Button>
       </div>
     )
@@ -115,13 +108,6 @@ export function Enroll() {
   if (state.step === 'selfie') {
     return <SelfieStep onComplete={(b64) => {
       dispatch({ type: 'CAPTURE_SELFIE', selfieB64: b64 })
-      dispatch({ type: 'GO_TO_STEP', step: 'voice' })
-    }} />
-  }
-
-  if (state.step === 'voice') {
-    return <VoiceStep onComplete={(emb) => {
-      dispatch({ type: 'CAPTURE_VOICE', embedding: emb })
       dispatch({ type: 'GO_TO_STEP', step: 'reflex' })
     }} />
   }
@@ -129,20 +115,6 @@ export function Enroll() {
   if (state.step === 'reflex') {
     return <ReflexStep onComplete={(ms) => {
       dispatch({ type: 'CAPTURE_REFLEX', ms })
-      dispatch({ type: 'GO_TO_STEP', step: 'digitspan' })
-    }} />
-  }
-
-  if (state.step === 'digitspan') {
-    return <DigitSpanStep onComplete={(score) => {
-      dispatch({ type: 'CAPTURE_DIGIT_SPAN', score })
-      dispatch({ type: 'GO_TO_STEP', step: 'stroop' })
-    }} />
-  }
-
-  if (state.step === 'stroop') {
-    return <StroopStep onComplete={(acc) => {
-      dispatch({ type: 'CAPTURE_STROOP', accuracy: acc })
       dispatch({ type: 'GO_TO_STEP', step: 'verifying' })
     }} />
   }
@@ -151,9 +123,9 @@ export function Enroll() {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
         <Spinner size={48} />
-        <h2 style={{ marginTop: 24 }}>Enrolling worker</h2>
+        <h2 style={{ marginTop: 24 }}>Inscription en cours</h2>
         <p style={{ color: 'var(--secondary-label)', marginTop: 8, textAlign: 'center' }}>
-          Submitting biometric data securely.
+          Envoi sécurisé des données.
         </p>
       </div>
     )
@@ -162,10 +134,10 @@ export function Enroll() {
   if (state.step === 'upload-error') {
     return (
       <ErrorState
-        title="Upload failed"
-        message={state.uploadError ?? 'Your data is saved. Tap Retry to submit.'}
+        title="Envoi échoué"
+        message={state.uploadError ?? 'Vos données sont sauvegardées.'}
         onRetry={() => dispatch({ type: 'GO_TO_STEP', step: 'verifying' })}
-        retryLabel="Retry"
+        retryLabel="Réessayer"
       />
     )
   }

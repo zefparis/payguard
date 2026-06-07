@@ -25,8 +25,8 @@ export function Result() {
   const isRejected = decision === 'REJECTED' || decision === 'MANUAL_REVIEW'
 
   const color = isApproved ? 'var(--green)' : isRejected ? 'var(--red)' : 'var(--orange)'
-  const title = s.context === 'enroll' ? 'Enrollment complete' : isApproved ? 'Payment approved' : isRejected ? 'Payment rejected' : 'Pending review'
-  const subtitle = s.context === 'enroll' ? 'The worker is now enrolled.' : isApproved ? 'You may proceed with disbursement.' : isRejected ? 'This payment has been blocked.' : 'A supervisor must validate.'
+  const title = s.context === 'enroll' ? 'Inscription terminée' : isApproved ? 'Paiement approuvé' : isRejected ? 'Paiement refusé' : 'En révision'
+  const subtitle = s.context === 'enroll' ? 'L’utilisateur est enregistré.' : isApproved ? 'Vous pouvez continuer.' : isRejected ? 'Ce paiement est bloqué.' : 'Un contrôle est nécessaire.'
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: 32 }}>
@@ -37,15 +37,15 @@ export function Result() {
 
         {s.context === 'pay' && s.firstName && (
           <div style={{ marginTop: 32, padding: 16, background: 'var(--system-background-secondary)', borderRadius: 12, textAlign: 'left' }}>
-            <Row label="Worker" value={`${s.firstName} ${s.lastName ?? ''}`} />
-            {typeof s.amount === 'number' && <Row label="Amount" value={`ZAR ${s.amount.toLocaleString()}`} />}
-            {s.period && <Row label="Period" value={s.period} />}
-            {s.employer && <Row label="Employer / Site" value={s.employer} />}
+            <Row label="Utilisateur" value={`${s.firstName} ${s.lastName ?? ''}`} />
+            {typeof s.amount === 'number' && <Row label="Montant" value={`ZAR ${s.amount.toLocaleString()}`} />}
+            {s.period && <Row label="Période" value={s.period} />}
+            {s.employer && <Row label="Employeur / site" value={s.employer} />}
           </div>
         )}
       </div>
       <Button variant="secondary" onClick={() => navigate(ROUTES.HOME, { replace: true })}>
-        Start a new request
+        Nouvelle demande
       </Button>
     </div>
   )

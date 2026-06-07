@@ -65,24 +65,24 @@ export function ReflexStep({ onComplete }: Props) {
     '#2563eb'
 
   const label =
-    phase === 'ready' ? 'TAP TO START' :
-    phase === 'wait' ? 'WAIT...' :
-    phase === 'go' ? 'TAP NOW!' :
-    phase === 'too_early' ? 'TOO EARLY!' :
-    'Done'
+    phase === 'ready' ? 'DÉMARRER' :
+    phase === 'wait' ? 'ATTENDEZ' :
+    phase === 'go' ? 'APPUYEZ' :
+    phase === 'too_early' ? 'TROP TÔT' :
+    'Terminé'
 
   const hint =
-    phase === 'ready' ? 'Tap the button, then wait for it to turn green.' :
-    phase === 'wait' ? 'Do NOT tap yet. Wait until the button turns green.' :
-    phase === 'go' ? 'Tap as fast as you can!' :
-    phase === 'too_early' ? 'You tapped before it turned green. Try again.' :
-    'Processing...'
+    phase === 'ready' ? 'Appuyez dès que vous voyez le cercle vert.' :
+    phase === 'wait' ? 'Attendez le vert.' :
+    phase === 'go' ? 'Appuyez maintenant.' :
+    phase === 'too_early' ? 'Trop tôt. Réessayez.' :
+    'Traitement...'
 
   return (
     <div style={{ textAlign: 'center', padding: 24 }}>
-      <h2 style={{ marginBottom: 4 }}>Reflex test</h2>
+      <h2 style={{ marginBottom: 4 }}>Test réflexe</h2>
       <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 8 }}>
-        Round {round + 1} of {REFLEX_ROUNDS}
+        Tour {round + 1} sur {REFLEX_ROUNDS}
       </p>
 
       <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
@@ -120,7 +120,7 @@ export function ReflexStep({ onComplete }: Props) {
 
       {lastMs !== null && phase === 'ready' && (
         <p style={{ marginTop: 12, fontSize: 14, color: 'var(--green)' }}>
-          Last: {lastMs} ms
+          Dernier : {lastMs} ms
         </p>
       )}
     </div>

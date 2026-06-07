@@ -10,10 +10,7 @@ export const initialFlowState: FlowState = {
   employer: null,
   captured: {
     selfieB64: null,
-    vocalEmbedding: null,
     reactionMs: null,
-    digitSpanScore: null,
-    stroopAccuracy: null,
   },
   decision: null,
   trustScore: null,
@@ -31,14 +28,8 @@ export function flowReducer(state: FlowState, action: FlowAction): FlowState {
       return { ...state, step: action.step, uploadError: null }
     case 'CAPTURE_SELFIE':
       return { ...state, captured: { ...state.captured, selfieB64: action.selfieB64 } }
-    case 'CAPTURE_VOICE':
-      return { ...state, captured: { ...state.captured, vocalEmbedding: action.embedding } }
     case 'CAPTURE_REFLEX':
       return { ...state, captured: { ...state.captured, reactionMs: action.ms } }
-    case 'CAPTURE_DIGIT_SPAN':
-      return { ...state, captured: { ...state.captured, digitSpanScore: action.score } }
-    case 'CAPTURE_STROOP':
-      return { ...state, captured: { ...state.captured, stroopAccuracy: action.accuracy } }
     case 'SET_DECISION':
       return { ...state, decision: action.decision, trustScore: action.trustScore, step: 'decision' }
     case 'UPLOAD_ERROR':

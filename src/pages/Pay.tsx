@@ -2,7 +2,6 @@ import { useEffect, useReducer, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { flowReducer, initialFlowState } from '../state/flowReducer'
 import { SelfieStep } from '../steps/SelfieStep'
-import { VoiceStep } from '../steps/VoiceStep'
 import { ReflexStep } from '../steps/ReflexStep'
 import { Button } from '../ui/Button'
 import { Spinner } from '../ui/Spinner'
@@ -27,7 +26,7 @@ export function Pay() {
   useEffect(() => {
     if (state.step !== 'verifying') return
     const c = state.captured
-    if (!c.selfieB64 || !c.vocalEmbedding || c.reactionMs == null || !state.studentId) return
+    if (!c.selfieB64 || c.reactionMs == null || !state.studentId) return
 
     let cancelled = false
     ;(async () => {
@@ -38,7 +37,7 @@ export function Pay() {
             first_name: state.firstName,
             last_name: state.lastName,
             student_id: state.studentId!,
-            vocal_embedding: c.vocalEmbedding!,
+            vocal_embedding: Array(192).fill(0),
             reaction_ms: c.reactionMs!,
           }),
           MAX_ATTEMPTS,
@@ -60,16 +59,16 @@ export function Pay() {
         })
       } catch (err) {
         if (cancelled) return
-        let userMessage = 'Connection failed. Your data is saved. Tap Retry to submit.'
+        let userMessage = 'Erreur de connexion. Vos données sont sauvegardées.'
         if (err instanceof ApiError) {
           if (err.code === 'FACE_NOT_DETECTED') {
-            userMessage = 'No face detected. Please ensure good lighting and retry.'
+            userMessage = 'Visage non détecté. Placez votre visage dans le cadre.'
           } else if (err.code === 'NO_MATCH' || err.code === 'IDENTITY_MISMATCH') {
-            userMessage = 'Identity verification failed. Please ensure you are the enrolled worker.'
+            userMessage = 'Vérification refusée. Vérifiez l’utilisateur.'
           } else if (err.code === 'MISSING_API_KEY' || err.code === 'INVALID_API_KEY') {
-            userMessage = 'App configuration error. Please contact support.'
+            userMessage = 'Erreur de configuration. Contactez le support.'
           } else if (err.status >= 500) {
-            userMessage = 'Server error. Please try again in a moment.'
+            userMessage = 'Erreur serveur. Réessayez dans un instant.'
           } else if (err.status === 422) {
             userMessage = err.message
           }
@@ -87,14 +86,14 @@ export function Pay() {
     try {
       const resp = await lookup({ first_name: firstName.trim(), last_name: lastName.trim() })
       if (!resp.found || !resp.student_id) {
-        setIdentityError('Worker not enrolled. Please enroll first.')
+        setIdentityError('Utilisateur non enregistré.')
         return
       }
       dispatch({ type: 'SET_IDENTITY', firstName: firstName.trim(), lastName: lastName.trim(), studentId: resp.student_id })
       dispatch({ type: 'SET_PAYMENT', amount: Number(amount), payPeriod: period.trim(), employer: employer.trim() })
       dispatch({ type: 'GO_TO_STEP', step: 'selfie' })
     } catch {
-      setIdentityError('Network error. Check your connection.')
+      setIdentityError('Erreur de connexion.')
     } finally {
       setLookingUp(false)
     }
@@ -105,14 +104,14 @@ export function Pay() {
     const valid = firstName.trim().length >= 2 && lastName.trim().length >= 2 && amountNum > 0 && amountNum < 1000000 && period.trim().length > 0 && employer.trim().length > 0
     return (
       <div style={{ padding: 32 }}>
-        <h2 style={{ marginBottom: 24 }}>Confirm payment</h2>
-        <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" autoCapitalize="words" autoComplete="given-name" style={inputStyle} />
-        <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name" autoCapitalize="words" autoComplete="family-name" style={inputStyle} />
+        <h2 style={{ marginBottom: 24 }}>Confirmer le paiement</h2>
+        <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="Prénom" autoCapitalize="words" autoComplete="given-name" style={inputStyle} />
+        <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Nom" autoCapitalize="words" autoComplete="family-name" style={inputStyle} />
         <div
           onClick={() => setShowNumpad(true)}
           style={{ ...inputStyle, display: 'flex', alignItems: 'center', cursor: 'pointer', color: amount ? 'var(--label)' : 'var(--secondary-label)', userSelect: 'none' }}
         >
-          {amount || 'Amount (ZAR)'}
+          {amount || 'Montant (ZAR)'}
         </div>
         {showNumpad && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.4)' }} onClick={() => setShowNumpad(false)}>
@@ -128,15 +127,15 @@ export function Pay() {
                   >{k}</button>
                 ))}
               </div>
-              <button onClick={() => setShowNumpad(false)} style={{ width: '100%', marginTop: 12, padding: 14, fontSize: 16, fontWeight: 700, border: 'none', borderRadius: 12, background: 'var(--green)', color: '#fff', cursor: 'pointer' }}>Done</button>
+              <button onClick={() => setShowNumpad(false)} style={{ width: '100%', marginTop: 12, padding: 14, fontSize: 16, fontWeight: 700, border: 'none', borderRadius: 12, background: 'var(--green)', color: '#fff', cursor: 'pointer' }}>Terminé</button>
             </div>
           </div>
         )}
-        <input value={period} onChange={e => setPeriod(e.target.value)} placeholder="Period (e.g. May 2026)" autoCapitalize="words" style={inputStyle} />
-        <input value={employer} onChange={e => setEmployer(e.target.value)} placeholder="Employer / Site" autoCapitalize="words" style={inputStyle} />
+        <input value={period} onChange={e => setPeriod(e.target.value)} placeholder="Période (ex. mai 2026)" autoCapitalize="words" style={inputStyle} />
+        <input value={employer} onChange={e => setEmployer(e.target.value)} placeholder="Employeur / site" autoCapitalize="words" style={inputStyle} />
         {identityError && <p style={{ color: 'var(--red)', marginBottom: 12 }}>{identityError}</p>}
         <Button disabled={!valid || lookingUp} onClick={submitIdentity}>
-          {lookingUp ? 'Looking up...' : 'Continue'}
+          {lookingUp ? 'Recherche...' : 'Continuer'}
         </Button>
       </div>
     )
@@ -145,13 +144,6 @@ export function Pay() {
   if (state.step === 'selfie') {
     return <SelfieStep onComplete={(b64) => {
       dispatch({ type: 'CAPTURE_SELFIE', selfieB64: b64 })
-      dispatch({ type: 'GO_TO_STEP', step: 'voice' })
-    }} />
-  }
-
-  if (state.step === 'voice') {
-    return <VoiceStep onComplete={(emb) => {
-      dispatch({ type: 'CAPTURE_VOICE', embedding: emb })
       dispatch({ type: 'GO_TO_STEP', step: 'reflex' })
     }} />
   }
@@ -167,9 +159,9 @@ export function Pay() {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
         <Spinner size={48} />
-        <h2 style={{ marginTop: 24 }}>Verifying identity</h2>
+        <h2 style={{ marginTop: 24 }}>Vérification en cours</h2>
         <p style={{ color: 'var(--secondary-label)', marginTop: 8, textAlign: 'center' }}>
-          Please wait, this takes a few seconds.
+          Patientez quelques secondes.
         </p>
       </div>
     )
@@ -178,10 +170,10 @@ export function Pay() {
   if (state.step === 'upload-error') {
     return (
       <ErrorState
-        title="Upload failed"
-        message={state.uploadError ?? 'Your data is saved. Tap Retry to submit.'}
+        title="Envoi échoué"
+        message={state.uploadError ?? 'Vos données sont sauvegardées.'}
         onRetry={() => dispatch({ type: 'GO_TO_STEP', step: 'verifying' })}
-        retryLabel="Retry"
+        retryLabel="Réessayer"
       />
     )
   }
