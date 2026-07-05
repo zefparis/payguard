@@ -1,4 +1,4 @@
-import { API_URL, API_KEY, TENANT_ID, REQUEST_TIMEOUT_MS } from '../constants/config'
+import { API_URL, TENANT_ID, REQUEST_TIMEOUT_MS } from '../constants/config'
 import type { EnrollPayload, AuthPaymentPayload, Decision } from '../types/flow'
 
 export class ApiError extends Error {
@@ -15,7 +15,6 @@ export class ApiError extends Error {
 function headers(): Record<string, string> {
   return {
     'Content-Type': 'application/json',
-    'X-API-Key': API_KEY,
   }
 }
 
@@ -100,7 +99,7 @@ export async function payVerify(payload: {
   first_name: string
   last_name: string
   student_id: string
-  vocal_embedding: number[]
+  vocal_embedding?: number[]
   reaction_ms: number
 }): Promise<{ decision: Decision; trust_score: number; verified: boolean; similarity: number }> {
   const controller = new AbortController()

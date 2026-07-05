@@ -25,7 +25,6 @@ workflows:
           {
             echo "VITE_API_URL=$VITE_API_URL"
             echo "VITE_TENANT_ID=$VITE_TENANT_ID"
-            echo "VITE_HV_API_KEY=$VITE_HV_API_KEY"
           } > .env.production
           echo "--- .env.production generated ---"
           wc -l .env.production
@@ -115,7 +114,7 @@ workflows:
       android_signing:
         - payguard_android_keystore
       vars:
-        VITE_API_URL: "https://hybrid-vector-api-m5xt.onrender.com"
+        VITE_API_URL: "https://payguard.vercel.app/api"
         VITE_TENANT_ID: "payguard-demo"
       node: v22.14.0
       java: 21

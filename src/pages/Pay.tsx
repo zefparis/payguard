@@ -37,7 +37,6 @@ export function Pay() {
             first_name: state.firstName,
             last_name: state.lastName,
             student_id: state.studentId!,
-            vocal_embedding: Array(192).fill(0),
             reaction_ms: c.reactionMs!,
           }),
           MAX_ATTEMPTS,
