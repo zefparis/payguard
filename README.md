@@ -23,7 +23,7 @@ Biometric payroll validation app for workers in South Africa. Workers confirm sa
 - **State Management**: Zustand
 - **Routing**: React Router v6
 - **Styling**: Custom CSS with dark theme
-- **API**: Hybrid Vector API (https://hybrid-vector-api.onrender.com)
+- **API**: Hybrid Vector API (https://hybrid-vector-api-m5xt.onrender.com)
 
 ## Getting Started
 
@@ -43,9 +43,9 @@ npm install
 Create a `.env` file in the root directory:
 
 ```env
-VITE_API_URL=https://hybrid-vector-api.onrender.com
+VITE_API_URL=/api
 VITE_TENANT_ID=payguard-demo
-VITE_HV_API_KEY=
+# HV_API_KEY is server-side only (Vercel env var) — never in VITE_
 ```
 
 ### Development

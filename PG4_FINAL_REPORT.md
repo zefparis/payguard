@@ -143,7 +143,7 @@ VITE_TENANT_ID=unipay-congo
 
 ### Hybrid Vector API (`.env`)
 ```
-HCS_API_URL=https://hcs-u7-backend.onrender.com
+HCS_API_URL=https://hcs-u7-backend-kk0n.onrender.com
 HCS_API_KEY=<server-side only>
 HCS_WORKER_SHARED_SECRET=<server-side only>
 HV_API_KEY=<server-side only>
