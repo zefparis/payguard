@@ -48,9 +48,21 @@ describe('DG-2: DemoGuard feature gate', () => {
     expect(CONSTANTS_SRC).toContain('VITE_DEMOGUARD_ENABLED');
   });
 
-  it('App.tsx conditionally renders DemoGuard route', () => {
+  it('App.tsx always registers /demoguard route (not conditionally mounted)', () => {
     expect(APP_SRC).toContain('DEMOGUARD_ENABLED');
     expect(APP_SRC).toContain('DemoGuard');
+    expect(APP_SRC).toContain("path={ROUTES.DEMOGUARD}");
+    expect(APP_SRC).not.toMatch(/\{DEMOGUARD_ENABLED\s*&&\s*<Route/);
+  });
+
+  it('App.tsx renders disabled screen when DEMOGUARD_ENABLED is false', () => {
+    expect(APP_SRC).toContain('DemoGuardDisabled');
+  });
+
+  it('App.tsx does not redirect /demoguard to home', () => {
+    const demoguardRouteMatch = APP_SRC.match(/path=\{ROUTES\.DEMOGUARD\}[^}]*/);
+    expect(demoguardRouteMatch).toBeDefined();
+    expect(demoguardRouteMatch![0]).not.toContain('Navigate');
   });
 });
 
