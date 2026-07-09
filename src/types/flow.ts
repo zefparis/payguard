@@ -17,6 +17,7 @@ export type FlowState = {
   amount: number | null
   payPeriod: string | null
   employer: string | null
+  hcsSessionPublicId: string | null
   captured: CapturedData
   decision: Decision | null
   trustScore: number | null
@@ -25,7 +26,7 @@ export type FlowState = {
 }
 
 export type FlowAction =
-  | { type: 'SET_IDENTITY'; firstName: string; lastName: string; studentId?: string }
+  | { type: 'SET_IDENTITY'; firstName: string; lastName: string; studentId?: string; hcsSessionPublicId?: string }
   | { type: 'SET_PAYMENT'; amount: number; payPeriod: string; employer: string }
   | { type: 'GO_TO_STEP'; step: FlowStep }
   | { type: 'CAPTURE_SELFIE'; selfieB64: string }

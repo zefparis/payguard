@@ -8,6 +8,7 @@ export const initialFlowState: FlowState = {
   amount: null,
   payPeriod: null,
   employer: null,
+  hcsSessionPublicId: null,
   captured: {
     selfieB64: null,
     reactionMs: null,
@@ -21,7 +22,7 @@ export const initialFlowState: FlowState = {
 export function flowReducer(state: FlowState, action: FlowAction): FlowState {
   switch (action.type) {
     case 'SET_IDENTITY':
-      return { ...state, firstName: action.firstName, lastName: action.lastName, studentId: action.studentId ?? state.studentId }
+      return { ...state, firstName: action.firstName, lastName: action.lastName, studentId: action.studentId ?? state.studentId, hcsSessionPublicId: action.hcsSessionPublicId ?? state.hcsSessionPublicId }
     case 'SET_PAYMENT':
       return { ...state, amount: action.amount, payPeriod: action.payPeriod, employer: action.employer }
     case 'GO_TO_STEP':

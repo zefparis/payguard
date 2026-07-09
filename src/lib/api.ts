@@ -101,7 +101,18 @@ export async function payVerify(payload: {
   student_id: string
   vocal_embedding?: number[]
   reaction_ms: number
-}): Promise<{ decision: Decision; trust_score: number; verified: boolean; similarity: number }> {
+  hcs_session_public_id?: string
+}): Promise<{
+  decision: Decision
+  trust_score: number
+  verified: boolean
+  similarity: number
+  hybridFusion?: {
+    triggered: boolean
+    globalDecision?: string
+    confidenceLevel?: string
+  }
+}> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS * 2)
   try {

@@ -11,6 +11,8 @@ import { withRetry } from '../lib/retry'
 import { MAX_ATTEMPTS } from '../constants/config'
 import { ROUTES } from '../constants/routes'
 
+const DEMO_LEVY_ENABLED = import.meta.env.VITE_PAYGUARD_DEMO_LEVY_ENABLED === 'true'
+
 export function Pay() {
   const [state, dispatch] = useReducer(flowReducer, { ...initialFlowState, step: 'identity' })
   const [firstName, setFirstName] = useState('')
@@ -18,6 +20,7 @@ export function Pay() {
   const [amount, setAmount] = useState('')
   const [period, setPeriod] = useState('')
   const [employer, setEmployer] = useState('')
+  const [hcsSessionId, setHcsSessionId] = useState('')
   const [lookingUp, setLookingUp] = useState(false)
   const [identityError, setIdentityError] = useState<string | null>(null)
   const [showNumpad, setShowNumpad] = useState(false)
@@ -38,6 +41,7 @@ export function Pay() {
             last_name: state.lastName,
             student_id: state.studentId!,
             reaction_ms: c.reactionMs!,
+            ...(state.hcsSessionPublicId ? { hcs_session_public_id: state.hcsSessionPublicId } : {}),
           }),
           MAX_ATTEMPTS,
         )
@@ -88,7 +92,7 @@ export function Pay() {
         setIdentityError('Utilisateur non enregistré.')
         return
       }
-      dispatch({ type: 'SET_IDENTITY', firstName: firstName.trim(), lastName: lastName.trim(), studentId: resp.student_id })
+      dispatch({ type: 'SET_IDENTITY', firstName: firstName.trim(), lastName: lastName.trim(), studentId: resp.student_id, hcsSessionPublicId: hcsSessionId.trim() || undefined })
       dispatch({ type: 'SET_PAYMENT', amount: Number(amount), payPeriod: period.trim(), employer: employer.trim() })
       dispatch({ type: 'GO_TO_STEP', step: 'selfie' })
     } catch {
@@ -132,6 +136,16 @@ export function Pay() {
         )}
         <input value={period} onChange={e => setPeriod(e.target.value)} placeholder="Période (ex. mai 2026)" autoCapitalize="words" style={inputStyle} />
         <input value={employer} onChange={e => setEmployer(e.target.value)} placeholder="Employeur / site" autoCapitalize="words" style={inputStyle} />
+        {DEMO_LEVY_ENABLED && (
+          <input
+            value={hcsSessionId}
+            onChange={e => setHcsSessionId(e.target.value)}
+            placeholder="HCS Session ID (hcs_sess_...)"
+            autoCapitalize="none"
+            autoComplete="off"
+            style={{ ...inputStyle, fontFamily: 'monospace', fontSize: 13 }}
+          />
+        )}
         {identityError && <p style={{ color: 'var(--red)', marginBottom: 12 }}>{identityError}</p>}
         <Button disabled={!valid || lookingUp} onClick={submitIdentity}>
           {lookingUp ? 'Recherche...' : 'Continuer'}
