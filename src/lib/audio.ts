@@ -212,7 +212,13 @@ export function encodeWav(samples: Float32Array, sampleRate: number): Uint8Array
 
 const TARGET_SR = 16000
 
-export async function recordAudio(durationMs: number): Promise<Float32Array[]> {
+export interface AudioRecordingResult {
+  samples: Float32Array[];
+  recorderState: 'inactive' | 'recording' | 'paused' | 'unknown';
+  chunksCount: number;
+}
+
+export async function recordAudio(durationMs: number): Promise<AudioRecordingResult> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
 
   const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -243,7 +249,11 @@ export async function recordAudio(durationMs: number): Promise<Float32Array[]> {
   const mono = toMonoFloat32(audioBuffer)
   const resampled = resampleLinear(mono, audioBuffer.sampleRate, TARGET_SR)
 
-  return [resampled]
+  return {
+    samples: [resampled],
+    recorderState: 'inactive',
+    chunksCount: chunks.length,
+  }
 }
 
 export function computeVocalEmbedding(samples: Float32Array[]): number[] {

@@ -104,6 +104,8 @@ export interface DemoGuardVoiceDiagnostic {
   recordingStarted: boolean;
   recordingStopped: boolean;
   mimeType: string | null;
+  recorderState: 'inactive' | 'recording' | 'paused' | 'unknown' | null;
+  chunksCount: number | null;
 }
 
 // ─── Device signal metadata ───────────────────────────────────────

@@ -51,7 +51,8 @@ export async function recordVoiceChallenge(
   challengeId: string = generateChallengeId(),
 ): Promise<AudioCollectorResult> {
   try {
-    const samples = await recordAudio(durationMs);
+    const recording = await recordAudio(durationMs);
+    const samples = recording.samples;
 
     if (samples.length === 0) {
       return {
@@ -77,6 +78,8 @@ export async function recordVoiceChallenge(
           recordingStarted: true,
           recordingStopped: true,
           mimeType: null,
+          recorderState: recording.recorderState,
+          chunksCount: recording.chunksCount,
         },
       };
     }
@@ -134,6 +137,8 @@ export async function recordVoiceChallenge(
         recordingStarted: true,
         recordingStopped: true,
         mimeType: 'audio/wav',
+        recorderState: recording.recorderState,
+        chunksCount: recording.chunksCount,
       },
     };
   } catch (err) {
@@ -162,6 +167,8 @@ export async function recordVoiceChallenge(
             recordingStarted: false,
             recordingStopped: false,
             mimeType: null,
+            recorderState: null,
+            chunksCount: null,
           },
         };
       }
@@ -188,6 +195,8 @@ export async function recordVoiceChallenge(
           recordingStarted: false,
           recordingStopped: false,
           mimeType: null,
+          recorderState: null,
+          chunksCount: null,
         },
       };
     }
@@ -214,6 +223,8 @@ export async function recordVoiceChallenge(
         recordingStarted: false,
         recordingStopped: false,
         mimeType: null,
+        recorderState: null,
+        chunksCount: null,
       },
     };
   }
