@@ -1,7 +1,9 @@
 /**
  * DemoGuard — Touch dynamics collector
  *
- * Listens to pointerdown, pointermove, pointerup.
+ * Listens to pointerdown, pointermove, pointerup (primary).
+ * Falls back to touchstart/touchmove/touchend if Pointer Events not available.
+ * Filters desktop mouse events: only pointerType 'touch' or TouchEvent counts.
  * Returns safe summary only — no raw touch traces.
  *
  * @copyright (c) 2026 Benjamin BARRERE / IA SOLUTION
@@ -24,8 +26,17 @@ export function collectTouch(durationMs: number = 5000): Promise<DemoGuardTouchS
     let lastY = 0;
     let isDown = false;
     let touchDurationMs: number | undefined;
+    let hasTouchApi = false;
 
-    const onDown = (e: PointerEvent) => {
+    // Check if device has touch support
+    if ('ontouchstart' in window || (navigator.maxTouchPoints ?? 0) > 0) {
+      hasTouchApi = true;
+    }
+
+    const onPointerDown = (e: PointerEvent) => {
+      // Only count touch-type pointers on touch-capable devices
+      // On desktop without touch, pointerType is 'mouse' — don't count as touch
+      if (hasTouchApi && e.pointerType !== 'touch') return;
       touchCount++;
       isDown = true;
       downTime = performance.now();
@@ -42,8 +53,9 @@ export function collectTouch(durationMs: number = 5000): Promise<DemoGuardTouchS
       }
     };
 
-    const onMove = (e: PointerEvent) => {
+    const onPointerMove = (e: PointerEvent) => {
       if (!isDown) return;
+      if (hasTouchApi && e.pointerType !== 'touch') return;
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
       totalMoveDistance += Math.sqrt(dx * dx + dy * dy);
@@ -55,25 +67,78 @@ export function collectTouch(durationMs: number = 5000): Promise<DemoGuardTouchS
       }
     };
 
-    const onUp = () => {
+    const onPointerUp = () => {
       if (isDown) {
         touchDurationMs = Math.round(performance.now() - downTime);
         isDown = false;
       }
     };
 
-    window.addEventListener('pointerdown', onDown);
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    // TouchEvent fallback (older browsers, iOS Safari quirks)
+    const onTouchStart = (e: TouchEvent) => {
+      touchCount += e.changedTouches.length;
+      isDown = true;
+      downTime = performance.now();
+      const t = e.changedTouches[0];
+      if (t) {
+        lastX = t.clientX;
+        lastY = t.clientY;
+      }
+      pointerType = 'touch';
+      if (e.touches.length > 1) {
+        multiTouchDetected = true;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isDown) return;
+      const t = e.changedTouches[0];
+      if (t) {
+        const dx = t.clientX - lastX;
+        const dy = t.clientY - lastY;
+        totalMoveDistance += Math.sqrt(dx * dx + dy * dy);
+        lastX = t.clientX;
+        lastY = t.clientY;
+      }
+    };
+
+    const onTouchEnd = () => {
+      if (isDown) {
+        touchDurationMs = Math.round(performance.now() - downTime);
+        isDown = false;
+      }
+    };
+
+    // Register listeners — passive to avoid scroll jank
+    window.addEventListener('pointerdown', onPointerDown, { passive: true });
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('pointerup', onPointerUp, { passive: true });
+
+    // TouchEvent fallback
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
 
     setTimeout(() => {
-      window.removeEventListener('pointerdown', onDown);
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
 
       const pressureAvg = pressureSamples > 0 ? pressureSum / pressureSamples : undefined;
-      const quality: DemoGuardTouchSignal['quality'] =
-        touchCount > 0 ? 'ok' : 'missing';
+
+      // Determine quality: ok if touch captured, unsupported if no touch API, missing otherwise
+      let quality: DemoGuardTouchSignal['quality'];
+      if (touchCount > 0) {
+        quality = 'ok';
+      } else if (!hasTouchApi && pointerType === undefined) {
+        // No touch API and no pointer events at all — unsupported
+        quality = 'missing';
+      } else {
+        quality = 'missing';
+      }
 
       resolve({
         touch_count: touchCount,
