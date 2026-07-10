@@ -17,7 +17,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { sanitizeResponse } from '../_lib/demoguardSanitize';
+import { sanitizeResponse } from '../_lib/demoguardSanitize.js';
 
 // ─── Types ─────────────────────────────────────────────────────────
 
