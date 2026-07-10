@@ -172,6 +172,7 @@ export interface DemoGuardHybridFusion {
   cognitiveStatus?: 'passed' | 'review' | 'failed';
   vocalStatus?: 'passed' | 'review' | 'failed';
   monitoringRecorded?: boolean;
+  monitoringStatus?: 'recorded' | 'pending' | 'failed';
 }
 
 export interface DemoGuardSafeResponse {

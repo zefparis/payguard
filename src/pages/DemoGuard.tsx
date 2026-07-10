@@ -1346,7 +1346,11 @@ export function DemoGuard() {
                 {response.hybridFusion.trustLevel && <span>Trust level: {response.hybridFusion.trustLevel}</span>}
                 {response.hybridFusion.cognitiveStatus && <span>Cognitive: {response.hybridFusion.cognitiveStatus}</span>}
                 {response.hybridFusion.vocalStatus && <span>Vocal: {response.hybridFusion.vocalStatus}</span>}
-                {response.hybridFusion.monitoringRecorded != null && <span>Monitoring: {response.hybridFusion.monitoringRecorded ? '✅ Recorded' : '❌ Not recorded'}</span>}
+                {response.hybridFusion.monitoringStatus != null && (
+                  <span>Monitoring: {response.hybridFusion.monitoringStatus === 'recorded' ? '✅ Recorded' : response.hybridFusion.monitoringStatus === 'pending' ? '⏳ Pending' : '❌ Failed'}</span>
+                ) || response.hybridFusion.monitoringRecorded != null && (
+                  <span>Monitoring: {response.hybridFusion.monitoringRecorded ? '✅ Recorded' : '❌ Not recorded'}</span>
+                )}
               </>
             )}
           </div>
