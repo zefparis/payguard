@@ -82,6 +82,9 @@ export type DemoGuardVocalReasonSafe =
 
 export type DemoGuardAudioSizeBucket = 'none' | 'small' | 'medium' | 'large';
 
+export type DemoGuardAnalysisMode = 'full_audio' | 'metadata_only' | 'skipped' | 'failed';
+export type DemoGuardAudioPipelineStatus = 'captured' | 'missing' | 'too_short' | 'permission_denied' | 'unsupported';
+
 export interface DemoGuardVoiceDiagnostic {
   microphonePermission: 'granted' | 'denied' | 'prompt' | 'unsupported' | 'unknown';
   audioCaptured: boolean;
@@ -95,6 +98,8 @@ export interface DemoGuardVoiceDiagnostic {
   confidenceLevel: 'high' | 'medium' | 'low' | null;
   reasonSafe: DemoGuardVocalReasonSafe;
   latencyMs: number | null;
+  analysisMode: DemoGuardAnalysisMode;
+  audioPipelineStatus: DemoGuardAudioPipelineStatus;
 }
 
 // ─── Device signal metadata ───────────────────────────────────────

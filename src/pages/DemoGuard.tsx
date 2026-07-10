@@ -21,8 +21,8 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import './demoguard-premium.css';
 import { ROUTES } from '../constants/routes';
-import { Button } from '../ui/Button';
 import { collectDeviceContext } from '../demoguard/collectors/deviceCollector';
 import { collectPermissions } from '../demoguard/collectors/permissionCollector';
 import { computeQuality } from '../demoguard/quality/signalCompleteness';
@@ -668,6 +668,7 @@ export function DemoGuard() {
 
   // ── Submit ──
   const handleSubmit = useCallback(async () => {
+    if (phase === 'submitting') return;
     if (!sessionPublicId.trim()) {
       setError('hcs_session_public_id is required');
       return;
@@ -735,207 +736,297 @@ export function DemoGuard() {
     return () => { stopCamera(cameraStreamRef.current); };
   }, []);
 
-  const completeness = quality ? quality.signal_completeness : 0;
+  // ── Submit workflow state ──
+  const [reconciledVocalDiag, setReconciledVocalDiag] = useState<DemoGuardVoiceDiagnostic | null>(null);
+
+  // ── Submit block reasons ──
+  const submitBlockReasons: string[] = [];
+  if (!sessionPublicId.trim()) submitBlockReasons.push('Missing session public ID');
+  if (!device || !permissions) submitBlockReasons.push('Device check not completed');
+  if (phase === 'submitting') submitBlockReasons.push('Submission in progress');
+
+  // ── Submit warnings (not blocking) ──
+  const submitWarnings: string[] = [];
+  if (voiceSignal && !voiceSignal.recorded) submitWarnings.push('Voice sample missing — cognitive signals will carry the decision');
+  if (motionSignal && motionSignal.quality === 'unsupported') submitWarnings.push('Motion sensor unsupported on this device');
+  if (orientationSignal && orientationSignal.quality === 'unsupported') submitWarnings.push('Orientation sensor unsupported on this device');
+  if (cogSummary && cogSummary.depth_score < 0.65) submitWarnings.push(`Cognitive depth low (${(cogSummary.depth_score * 100).toFixed(0)}%) — submit with caution`);
+  if (cogSummary && cogSummary.completed_modules < 4) submitWarnings.push(`Only ${cogSummary.completed_modules} cognitive modules completed (recommended: 4+)`);
+
+  const canSubmit = submitBlockReasons.length === 0 && phase !== 'submitting' && phase !== 'done';
+  const isSubmitting = phase === 'submitting';
+  const isSubmitted = phase === 'done' && response != null;
+
+  // ── Reconcile vocal diagnostic from server response ──
+  useEffect(() => {
+    if (!response?.hybridFusion?.vocalDiagnostic) {
+      setReconciledVocalDiag(voiceDiagnostic);
+      return;
+    }
+    const remote = response.hybridFusion.vocalDiagnostic;
+    const local = voiceDiagnostic;
+    if (local && !local.audioCaptured) {
+      setReconciledVocalDiag({
+        ...remote,
+        audioCaptured: false,
+        payloadPrepared: false,
+        analysisMode: remote.relayAttempted ? 'metadata_only' : 'skipped',
+        audioPipelineStatus: local.audioPipelineStatus,
+        analyzed: false,
+      });
+    } else {
+      setReconciledVocalDiag(remote);
+    }
+  }, [response, voiceDiagnostic]);
+
+  // ── Mission status chip ──
+  const missionStatus: { label: string; cls: string } =
+    isSubmitted && response?.status === 'submitted' && response?.hybridFusion?.globalDecision === 'ACCEPT'
+      ? { label: 'Verified', cls: 'dg-chip-verified' }
+      : isSubmitted && response?.status === 'review'
+      ? { label: 'Review', cls: 'dg-chip-review' }
+      : isSubmitted && response?.status === 'failed'
+      ? { label: 'Failed', cls: 'dg-chip-failed' }
+      : isSubmitting
+      ? { label: 'Submitting', cls: 'dg-chip-collecting' }
+      : quality?.overall_ready
+      ? { label: 'Ready', cls: 'dg-chip-ready' }
+      : phase === 'idle'
+      ? { label: 'Idle', cls: 'dg-chip-neutral' }
+      : { label: 'Collecting', cls: 'dg-chip-collecting' };
+
+  // ── Sensor readiness score (0-100) ──
+  const sensorScore = quality ? Math.round(quality.signal_completeness * 100) : 0;
+  // ── Cognitive depth score (0-100) ──
+  const cognitiveScore = cogSummary ? Math.round(cogSummary.depth_score * 100) : 0;
+  // ── Voice integrity score (0-100) ──
+  const voiceScore = reconciledVocalDiag
+    ? reconciledVocalDiag.audioCaptured && reconciledVocalDiag.analyzed
+      ? 100
+      : reconciledVocalDiag.audioCaptured
+      ? 60
+      : reconciledVocalDiag.relayAttempted
+      ? 30
+      : 0
+    : 0;
+
+  // ── Response wording helpers ──
+  const responseMessage = response?.message
+    ? response.message === 'HCS result unavailable'
+      ? 'HCS cognitive result not finalized — Hybrid Vector used safe REVIEW fallback.'
+      : response.message
+    : null;
+
+  const monitoringLabel = response?.hybridFusion?.monitoringStatus
+    ? response.hybridFusion.monitoringStatus === 'recorded'
+      ? 'Recorded'
+      : response.hybridFusion.monitoringStatus === 'pending'
+      ? 'Pending'
+      : 'Failed'
+    : response?.hybridFusion?.monitoringRecorded != null
+    ? response.hybridFusion.monitoringRecorded
+      ? 'Recorded'
+      : 'Failed'
+    : null;
+
+  const vocalWording = reconciledVocalDiag
+    ? reconciledVocalDiag.vocalStatus === 'passed'
+      ? 'Voice integrity: Passed — liveness present'
+      : reconciledVocalDiag.audioCaptured === false
+      ? `Voice integrity: Review — audio sample missing (${reconciledVocalDiag.reasonSafe})`
+      : reconciledVocalDiag.analyzed === false
+      ? `Voice integrity: Review — HCS analysis limited (${reconciledVocalDiag.reasonSafe})`
+      : `Voice integrity: ${reconciledVocalDiag.vocalStatus} — ${reconciledVocalDiag.reasonSafe}`
+    : null;
 
   const reactionBg =
-    reactionPhase === 'go' ? '#34c759' :
-    reactionPhase === 'wait' ? '#b91c1c' :
-    reactionPhase === 'too_early' ? '#ff9f0a' :
-    '#2563eb';
+    reactionPhase === 'go' ? '#10b981' :
+    reactionPhase === 'wait' ? '#ef4444' :
+    reactionPhase === 'too_early' ? '#f59e0b' :
+    '#06b6d4';
 
   const reactionLabel =
-    reactionPhase === 'ready' ? 'DÉMARRER' :
-    reactionPhase === 'wait' ? 'ATTENDEZ' :
-    reactionPhase === 'go' ? 'APPUYEZ' :
-    reactionPhase === 'too_early' ? 'TROP TÔT' :
-    'Terminé';
+    reactionPhase === 'ready' ? 'TAP TO START' :
+    reactionPhase === 'wait' ? 'WAIT...' :
+    reactionPhase === 'go' ? 'TAP NOW!' :
+    reactionPhase === 'too_early' ? 'TOO EARLY' :
+    'Done';
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 32, gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700 }}>DemoGuard Mobile</h1>
-        <button
-          type="button"
-          onClick={() => navigate(ROUTES.HOME)}
-          style={{ background: 'none', border: 'none', color: 'var(--secondary-label)', fontSize: 15, cursor: 'pointer' }}
-        >
-          ← Back
-        </button>
+    <div className="dg-page">
+      {/* ═══ 1. Hero / Mission Status ═══ */}
+      <div className="dg-hero">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h1 className="dg-hero-title">HCS-U7 DemoGuard</h1>
+            <p className="dg-hero-sub">Human Cognitive Signature — v{DEMOGUARD_VERSION}</p>
+          </div>
+          <button type="button" onClick={() => navigate(ROUTES.HOME)} className="ddg-nav-back">
+            ← Back
+          </button>
+        </div>
+        <div className="dg-hero-meta">
+          <span className={`dg-chip ${missionStatus.cls}`}>{missionStatus.label}</span>
+          {sessionPublicId && (
+            <span className="dg-trace-id">
+              {sessionPublicId.length > 20
+                ? `${sessionPublicId.slice(0, 8)}…${sessionPublicId.slice(-6)}`
+                : sessionPublicId}
+            </span>
+          )}
+          {response?.traceId && (
+            <span className="dg-trace-id">trace: {response.traceId.slice(0, 12)}…</span>
+          )}
+        </div>
       </div>
 
-      <p style={{ color: 'var(--secondary-label)', fontSize: 14 }}>
-        Collecteur mobile pour démo HCS-U7 / Hybrid Vector. v{DEMOGUARD_VERSION}
-      </p>
-
-      {/* Step 1: Session ID input */}
-      <div>
-        <label style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
-          HCS Session Public ID
-        </label>
-        <input
-          type="text"
-          value={sessionPublicId}
-          onChange={(e) => setSessionPublicId(e.target.value)}
-          placeholder="hcs_sess_..."
-          style={{
-            width: '100%', height: 44, borderRadius: 10, fontSize: 16,
-            border: '1px solid var(--separator)', padding: '0 12px',
-            background: 'var(--background)', color: 'var(--label)',
-          }}
-        />
-      </div>
-
-      {/* Step 2: Start check */}
+      {/* Session ID input */}
       {phase === 'idle' && (
-        <Button onClick={handleStart}>Start DemoGuard check</Button>
+        <div className="dg-card">
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--dg-text-bright)' }}>
+            HCS Session Public ID
+          </label>
+          <input
+            type="text"
+            value={sessionPublicId}
+            onChange={(e) => setSessionPublicId(e.target.value)}
+            placeholder="hcs_sess_..."
+            className="dg-input"
+          />
+          <div style={{ marginTop: 12 }}>
+            <button onClick={handleStart} className="dg-btn dg-btn-primary" style={{ width: '100%' }}>
+              Start DemoGuard Check
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Device check result */}
       {device && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Device Check</h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span>Platform: {device.platform}</span>
-            <span>Screen: {device.screenWidth}×{device.screenHeight}</span>
-            <span>Online: {device.online ? '✅' : '❌'}</span>
-            <span>Timezone: {device.timezone ?? 'unknown'}</span>
-          </div>
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Device Check</h3>
+          <div className="dg-row"><span className="dg-row-label">Platform</span><span className="dg-row-value">{device.platform}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Screen</span><span className="dg-row-value">{device.screenWidth}×{device.screenHeight}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Online</span><span className="dg-row-value">{device.online ? 'OK' : 'OFFLINE'}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Timezone</span><span className="dg-row-value">{device.timezone ?? 'unknown'}</span></div>
         </div>
       )}
 
       {/* Permissions result */}
       {permissions && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Permissions</h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span>Camera: {permissions.camera}</span>
-            <span>Microphone: {permissions.microphone}</span>
-          </div>
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Permissions</h3>
+          <div className="dg-row"><span className="dg-row-label">Camera</span><span className={`dg-badge ${permissions.camera === 'granted' ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{permissions.camera}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Microphone</span><span className={`dg-badge ${permissions.microphone === 'granted' ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{permissions.microphone}</span></div>
         </div>
       )}
 
       {/* Step 3: Camera capture */}
       {phase === 'camera' && (
-        <div style={{ textAlign: 'center' }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Camera — Selfie Capture</h3>
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            style={{ width: '100%', maxWidth: 320, borderRadius: 16, marginBottom: 16, background: '#000' }}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button onClick={handleCaptureSelfie} disabled={!cameraReady}>Capture</Button>
-            <Button onClick={handleSkipCamera} variant="secondary">Skip</Button>
+        <div className="dg-card dg-challenge-area">
+          <h3 className="dg-challenge-title">Camera — Selfie Capture</h3>
+          <video ref={videoRef} autoPlay playsInline muted className="dg-video" />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+            <button onClick={handleCaptureSelfie} disabled={!cameraReady} className="dg-btn dg-btn-primary">Capture</button>
+            <button onClick={handleSkipCamera} className="dg-btn dg-btn-secondary">Skip</button>
           </div>
         </div>
       )}
 
       {/* Camera result */}
       {selfieSignal && phase !== 'camera' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Camera: {selfieSignal.captured ? '✅ OK' : '❌ Missing'}</h3>
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Camera</h3>
+          <div className="dg-row">
+            <span className="dg-row-label">Status</span>
+            <span className={`dg-badge ${selfieSignal.captured ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{selfieSignal.captured ? 'OK' : 'MISSING'}</span>
+          </div>
           {selfieSignal.captured && (
-            <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
-              <span>Quality: {selfieSignal.quality}</span>
-              {selfieSignal.width && <span> | {selfieSignal.width}×{selfieSignal.height}</span>}
-            </div>
+            <div className="dg-row"><span className="dg-row-label">Quality</span><span className="dg-row-value">{selfieSignal.quality}{selfieSignal.width ? ` · ${selfieSignal.width}×${selfieSignal.height}` : ''}</span></div>
           )}
         </div>
       )}
 
       {/* Step 4: Reaction test */}
       {phase === 'reaction' && (
-        <div style={{ textAlign: 'center', padding: 24 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Reaction Test</h3>
-          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 8 }}>
-            Tour {reactionRound + 1} sur {REACTION_ROUNDS}
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
+        <div className="dg-card dg-challenge-area">
+          <h3 className="dg-challenge-title">Reaction Test</h3>
+          <p className="dg-challenge-sub">Round {reactionRound + 1} of {REACTION_ROUNDS}</p>
+          <div className="dg-round-dots">
             {Array.from({ length: REACTION_ROUNDS }).map((_, i) => (
-              <div key={i} style={{
-                width: 10, height: 10, borderRadius: 5,
-                background: i < reactionResults.length ? 'var(--green)' : i === reactionRound ? 'var(--blue)' : 'var(--separator)',
-              }} />
+              <div key={i} className={`dg-round-dot ${i < reactionResults.length ? 'done' : i === reactionRound ? 'current' : ''}`} />
             ))}
           </div>
-          <button
-            onClick={handleReactionTap}
-            style={{
-              width: '100%', height: 200, borderRadius: 20, border: 'none',
-              background: reactionBg, color: '#ffffff', fontSize: 28, fontWeight: 800,
-              cursor: 'pointer', touchAction: 'manipulation',
-            }}
-          >
+          <button onClick={handleReactionTap} className="dg-reaction-btn" style={{ background: reactionBg }}>
             {reactionLabel}
           </button>
           {lastReactionMs !== null && reactionPhase === 'ready' && (
-            <p style={{ marginTop: 12, fontSize: 14, color: 'var(--green)' }}>
-              Dernier : {lastReactionMs} ms
-            </p>
+            <p style={{ marginTop: 12, fontSize: 14, color: 'var(--dg-green)' }}>Last: {lastReactionMs} ms</p>
           )}
         </div>
       )}
 
       {/* Reaction result */}
       {reactionSignal && phase !== 'reaction' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Reaction: {reactionSignal.quality === 'ok' ? '✅ OK' : reactionSignal.quality === 'low' ? '⚠️ Low' : '❌ Missing'}</h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {reactionSignal.reaction_ms != null && <span>Avg: {reactionSignal.reaction_ms} ms</span>}
-            <span>Too fast: {reactionSignal.too_fast ? '⚠️' : '✅'}</span>
-            <span>Too slow: {reactionSignal.too_slow ? '⚠️' : '✅'}</span>
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Reaction</h3>
+          <div className="dg-row">
+            <span className="dg-row-label">Status</span>
+            <span className={`dg-badge ${reactionSignal.quality === 'ok' ? 'dg-badge-ok' : reactionSignal.quality === 'low' ? 'dg-badge-review' : 'dg-badge-missing'}`}>{reactionSignal.quality === 'ok' ? 'OK' : reactionSignal.quality === 'low' ? 'LOW' : 'MISSING'}</span>
           </div>
+          {reactionSignal.reaction_ms != null && <div className="dg-row"><span className="dg-row-label">Avg</span><span className="dg-row-value">{reactionSignal.reaction_ms} ms</span></div>}
+          <div className="dg-row"><span className="dg-row-label">Too fast</span><span className={`dg-badge ${reactionSignal.too_fast ? 'dg-badge-review' : 'dg-badge-ok'}`}>{reactionSignal.too_fast ? 'WARNING' : 'OK'}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Too slow</span><span className={`dg-badge ${reactionSignal.too_slow ? 'dg-badge-review' : 'dg-badge-ok'}`}>{reactionSignal.too_slow ? 'WARNING' : 'OK'}</span></div>
         </div>
       )}
 
       {/* Step 5: Voice challenge */}
       {phase === 'voice' && (
-        <div style={{ textAlign: 'center', padding: 24 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Voice Challenge</h3>
-          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 16 }}>
-            Lisez cette phrase à voix haute :
-          </p>
-          <p style={{ fontWeight: 600, marginBottom: 16 }}>
-            "{generateChallengePhrase(voiceChallengeId)}"
-          </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button onClick={handleRecordVoice} disabled={voiceRecording}>
+        <div className="dg-card dg-challenge-area">
+          <h3 className="dg-challenge-title">Voice Challenge</h3>
+          <p className="dg-challenge-sub">Read this phrase aloud:</p>
+          <p className="dg-phrase">"{generateChallengePhrase(voiceChallengeId)}"</p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+            <button onClick={handleRecordVoice} disabled={voiceRecording} className="dg-btn dg-btn-primary">
               {voiceRecording ? 'Recording...' : 'Record'}
-            </Button>
-            <Button onClick={handleSkipVoice} variant="secondary" disabled={voiceRecording}>Skip</Button>
+            </button>
+            <button onClick={handleSkipVoice} disabled={voiceRecording} className="dg-btn dg-btn-secondary">Skip</button>
           </div>
         </div>
       )}
 
       {/* Voice result */}
       {voiceSignal && phase !== 'voice' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Voice: {voiceSignal.recorded ? '✅ OK' : '❌ Missing'}</h3>
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Voice</h3>
+          <div className="dg-row">
+            <span className="dg-row-label">Status</span>
+            <span className={`dg-badge ${voiceSignal.recorded ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{voiceSignal.recorded ? 'OK' : 'MISSING'}</span>
+          </div>
           {voiceSignal.recorded && (
-            <div style={{ fontSize: 13, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span>Duration: {voiceSignal.duration_ms} ms</span>
-              <span>MFCC: {voiceSignal.mfcc_available ? '✅' : '❌'}</span>
-              <span>Challenge: {voiceSignal.challenge_id}</span>
-            </div>
+            <>
+              <div className="dg-row"><span className="dg-row-label">Duration</span><span className="dg-row-value">{voiceSignal.duration_ms} ms</span></div>
+              <div className="dg-row"><span className="dg-row-label">MFCC</span><span className={`dg-badge ${voiceSignal.mfcc_available ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{voiceSignal.mfcc_available ? 'OK' : 'MISSING'}</span></div>
+            </>
           )}
           {voiceDiagnostic && (
-            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--separator)', fontSize: 12, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span style={{ fontWeight: 600, fontSize: 13 }}>Vocal Diagnostics</span>
-              <span>Microphone: {voiceDiagnostic.microphonePermission === 'granted' ? '✅ Granted' : voiceDiagnostic.microphonePermission === 'denied' ? '❌ Denied' : '⚠️ Unknown'}</span>
-              <span>Audio captured: {voiceDiagnostic.audioCaptured ? '✅' : '❌'}</span>
-              {voiceDiagnostic.durationMs != null && <span>Duration: {voiceDiagnostic.durationMs} ms</span>}
-              <span>Size bucket: {voiceDiagnostic.audioSizeBucket}</span>
-              <span>Payload prepared: {voiceDiagnostic.payloadPrepared ? '✅' : '❌'}</span>
-              <span>Relay attempted: {voiceDiagnostic.relayAttempted ? '✅' : '❌'}</span>
-              {voiceDiagnostic.relayAttempted && <span>Relay accepted: {voiceDiagnostic.relayAccepted ? '✅' : '❌'}</span>}
-              <span>Analyzed: {voiceDiagnostic.analyzed ? '✅' : '❌'}</span>
-              <span>Vocal status: <strong style={{ color: voiceDiagnostic.vocalStatus === 'passed' ? 'var(--green)' : voiceDiagnostic.vocalStatus === 'failed' ? 'var(--red)' : 'var(--secondary-label)' }}>{voiceDiagnostic.vocalStatus}</strong></span>
-              {voiceDiagnostic.confidenceLevel && <span>Confidence: {voiceDiagnostic.confidenceLevel}</span>}
-              {voiceDiagnostic.reasonSafe && <span>Reason: {voiceDiagnostic.reasonSafe}</span>}
-              {voiceDiagnostic.latencyMs != null && <span>Latency: {voiceDiagnostic.latencyMs} ms</span>}
-            </div>
+            <>
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--dg-border)' }} />
+              <div className="dg-row"><span className="dg-row-label">Microphone</span><span className={`dg-badge ${voiceDiagnostic.microphonePermission === 'granted' ? 'dg-badge-ok' : voiceDiagnostic.microphonePermission === 'denied' ? 'dg-badge-missing' : 'dg-badge-unsupported'}`}>{voiceDiagnostic.microphonePermission}</span></div>
+              <div className="dg-row"><span className="dg-row-label">Audio captured</span><span className={`dg-badge ${voiceDiagnostic.audioCaptured ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{voiceDiagnostic.audioCaptured ? 'YES' : 'NO'}</span></div>
+              <div className="dg-row"><span className="dg-row-label">Audio pipeline</span><span className="dg-row-value">{voiceDiagnostic.audioPipelineStatus}</span></div>
+              {voiceDiagnostic.durationMs != null && <div className="dg-row"><span className="dg-row-label">Duration</span><span className="dg-row-value">{voiceDiagnostic.durationMs} ms</span></div>}
+              <div className="dg-row"><span className="dg-row-label">Size bucket</span><span className="dg-row-value">{voiceDiagnostic.audioSizeBucket}</span></div>
+              <div className="dg-row"><span className="dg-row-label">Payload prepared</span><span className={`dg-badge ${voiceDiagnostic.payloadPrepared ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{voiceDiagnostic.payloadPrepared ? 'YES' : 'NO'}</span></div>
+              <div className="dg-row"><span className="dg-row-label">Analysis mode</span><span className="dg-row-value">{voiceDiagnostic.analysisMode.replace(/_/g, ' ')}</span></div>
+              <div className="dg-row"><span className="dg-row-label">Relay attempted</span><span className={`dg-badge ${voiceDiagnostic.relayAttempted ? 'dg-badge-ok' : 'dg-badge-skipped'}`}>{voiceDiagnostic.relayAttempted ? 'YES' : 'NO'}</span></div>
+              {voiceDiagnostic.relayAttempted && <div className="dg-row"><span className="dg-row-label">Relay accepted</span><span className={`dg-badge ${voiceDiagnostic.relayAccepted ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{voiceDiagnostic.relayAccepted ? 'YES' : 'NO'}</span></div>}
+              <div className="dg-row"><span className="dg-row-label">Analyzed</span><span className={`dg-badge ${voiceDiagnostic.analyzed ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{voiceDiagnostic.analyzed ? 'YES' : 'NO'}</span></div>
+              <div className="dg-row"><span className="dg-row-label">Vocal status</span><span className={`dg-badge ${voiceDiagnostic.vocalStatus === 'passed' ? 'dg-badge-ok' : voiceDiagnostic.vocalStatus === 'failed' ? 'dg-badge-failed' : voiceDiagnostic.vocalStatus === 'review' ? 'dg-badge-review' : 'dg-badge-skipped'}`}>{voiceDiagnostic.vocalStatus}</span></div>
+              {voiceDiagnostic.confidenceLevel && <div className="dg-row"><span className="dg-row-label">Confidence</span><span className="dg-row-value">{voiceDiagnostic.confidenceLevel}</span></div>}
+              {voiceDiagnostic.reasonSafe && <div className="dg-row"><span className="dg-row-label">Reason</span><span className="dg-row-value dg-row-value-mono">{voiceDiagnostic.reasonSafe}</span></div>}
+              {voiceDiagnostic.latencyMs != null && <div className="dg-row"><span className="dg-row-label">Latency</span><span className="dg-row-value">{voiceDiagnostic.latencyMs} ms</span></div>}
+            </>
           )}
         </div>
       )}
@@ -944,49 +1035,36 @@ export function DemoGuard() {
 
       {/* Cognitive Reflex (phase: cognitive-intro) */}
       {phase === 'cognitive-intro' && (
-        <div style={{ textAlign: 'center', padding: 24 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cognitive Battery — Reflex</h3>
-          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 8 }}>
-            Tour {cogReflexRound + 1} sur {COG_REFLEX_ROUNDS}
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
+        <div className="dg-card dg-challenge-area">
+          <h3 className="dg-challenge-title">Cognitive Battery — Reflex</h3>
+          <p className="dg-challenge-sub">Round {cogReflexRound + 1} of {COG_REFLEX_ROUNDS}</p>
+          <div className="dg-round-dots">
             {Array.from({ length: COG_REFLEX_ROUNDS }).map((_, i) => (
-              <div key={i} style={{
-                width: 10, height: 10, borderRadius: 5,
-                background: i < cogReflexResults.length ? 'var(--green)' : i === cogReflexRound ? 'var(--blue)' : 'var(--separator)',
-              }} />
+              <div key={i} className={`dg-round-dot ${i < cogReflexResults.length ? 'done' : i === cogReflexRound ? 'current' : ''}`} />
             ))}
           </div>
           <button
             onClick={handleCogReflexTap}
-            style={{
-              width: '100%', height: 180, borderRadius: 20, border: 'none',
-              background: cogReflexPhase === 'go' ? '#34c759' : cogReflexPhase === 'wait' ? '#b91c1c' : cogReflexPhase === 'too_early' ? '#ff9f0a' : '#2563eb',
-              color: '#ffffff', fontSize: 24, fontWeight: 800, cursor: 'pointer', touchAction: 'manipulation',
-            }}
+            className="dg-reaction-btn"
+            style={{ background: cogReflexPhase === 'go' ? '#10b981' : cogReflexPhase === 'wait' ? '#ef4444' : cogReflexPhase === 'too_early' ? '#f59e0b' : '#06b6d4' }}
           >
-            {cogReflexPhase === 'ready' ? 'DÉMARRER' : cogReflexPhase === 'wait' ? 'ATTENDEZ' : cogReflexPhase === 'go' ? 'APPUYEZ' : cogReflexPhase === 'too_early' ? 'TROP TÔT' : 'Terminé'}
+            {cogReflexPhase === 'ready' ? 'TAP TO START' : cogReflexPhase === 'wait' ? 'WAIT...' : cogReflexPhase === 'go' ? 'TAP NOW!' : cogReflexPhase === 'too_early' ? 'TOO EARLY' : 'Done'}
           </button>
           {cogLastReflexMs !== null && cogReflexPhase === 'ready' && (
-            <p style={{ marginTop: 12, fontSize: 14, color: 'var(--green)' }}>Dernier : {cogLastReflexMs} ms</p>
+            <p style={{ marginTop: 12, fontSize: 14, color: 'var(--dg-green)' }}>Last: {cogLastReflexMs} ms</p>
           )}
           <div style={{ marginTop: 16 }}>
-            <Button onClick={handleSkipCogReflex} variant="secondary">Skip Reflex</Button>
+            <button onClick={handleSkipCogReflex} className="dg-btn dg-btn-secondary">Skip Reflex</button>
           </div>
         </div>
       )}
 
       {/* Cognitive Stroop */}
       {phase === 'cognitive-stroop' && stroopTrials.length > 0 && stroopIndex < stroopTrials.length && (
-        <div style={{ textAlign: 'center', padding: 24 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cognitive Battery — Stroop</h3>
-          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 16 }}>
-            Trial {stroopIndex + 1} / {stroopTrials.length} — Sélectionnez la COULEUR affichée
-          </p>
-          <div style={{
-            fontSize: 48, fontWeight: 900, marginBottom: 24,
-            color: stroopTrials[stroopIndex].displayColor === 'red' ? '#ef4444' : stroopTrials[stroopIndex].displayColor === 'blue' ? '#3b82f6' : stroopTrials[stroopIndex].displayColor === 'green' ? '#22c55e' : '#eab308',
-          }}>
+        <div className="dg-card dg-challenge-area">
+          <h3 className="dg-challenge-title">Cognitive Battery — Stroop</h3>
+          <p className="dg-challenge-sub">Trial {stroopIndex + 1} / {stroopTrials.length} — Select the COLOR shown</p>
+          <div className="dg-stroop-word" style={{ color: stroopTrials[stroopIndex].displayColor === 'red' ? '#ef4444' : stroopTrials[stroopIndex].displayColor === 'blue' ? '#3b82f6' : stroopTrials[stroopIndex].displayColor === 'green' ? '#22c55e' : '#eab308' }}>
             {stroopTrials[stroopIndex].word.toUpperCase()}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
@@ -994,50 +1072,39 @@ export function DemoGuard() {
               <button
                 key={color}
                 onClick={() => handleStroopSelect(color)}
-                style={{
-                  width: 72, height: 72, borderRadius: 12, border: 'none',
-                  background: color === 'red' ? '#ef4444' : color === 'blue' ? '#3b82f6' : color === 'green' ? '#22c55e' : '#eab308',
-                  color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', touchAction: 'manipulation',
-                }}
+                className="dg-stroop-btn"
+                style={{ background: color === 'red' ? '#ef4444' : color === 'blue' ? '#3b82f6' : color === 'green' ? '#22c55e' : '#eab308' }}
               >
                 {color}
               </button>
             ))}
           </div>
           <div style={{ marginTop: 16 }}>
-            <Button onClick={handleSkipStroop} variant="secondary">Skip Stroop</Button>
+            <button onClick={handleSkipStroop} className="dg-btn dg-btn-secondary">Skip Stroop</button>
           </div>
         </div>
       )}
 
       {/* Cognitive Digit Span */}
       {phase === 'cognitive-digit-span' && digitSpanTrials.length > 0 && digitSpanIndex < digitSpanTrials.length && (
-        <div style={{ textAlign: 'center', padding: 24 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cognitive Battery — Digit Span</h3>
-          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 16 }}>
-            Trial {digitSpanIndex + 1} / {digitSpanTrials.length} — {digitSpanTrials[digitSpanIndex].span} digits
-          </p>
+        <div className="dg-card dg-challenge-area">
+          <h3 className="dg-challenge-title">Cognitive Battery — Digit Span</h3>
+          <p className="dg-challenge-sub">Trial {digitSpanIndex + 1} / {digitSpanTrials.length} — {digitSpanTrials[digitSpanIndex].span} digits</p>
           {digitSpanShowDigits ? (
-            <div style={{ fontSize: 40, fontWeight: 800, letterSpacing: 8, marginBottom: 24 }}>
-              {digitSpanTrials[digitSpanIndex].sequence.join(' ')}
-            </div>
+            <div className="dg-digit-display">{digitSpanTrials[digitSpanIndex].sequence.join(' ')}</div>
           ) : (
             <>
-              <p style={{ marginBottom: 16, fontSize: 14 }}>Retapez la séquence :</p>
+              <p className="dg-challenge-sub">Type the sequence:</p>
               <input
                 type="text"
                 inputMode="numeric"
                 value={digitSpanInput}
                 onChange={(e) => setDigitSpanInput(e.target.value.replace(/\D/g, ''))}
-                style={{
-                  width: '100%', height: 48, borderRadius: 10, fontSize: 24, textAlign: 'center',
-                  border: '1px solid var(--separator)', padding: '0 12px', marginBottom: 16,
-                  background: 'var(--background)', color: 'var(--label)', letterSpacing: 4,
-                }}
+                className="dg-digit-input"
               />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Button onClick={handleDigitSpanSubmit} disabled={!digitSpanInput}>Submit</Button>
-                <Button onClick={handleSkipDigitSpan} variant="secondary">Skip</Button>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                <button onClick={handleDigitSpanSubmit} disabled={!digitSpanInput} className="dg-btn dg-btn-primary">Submit</button>
+                <button onClick={handleSkipDigitSpan} className="dg-btn dg-btn-secondary">Skip</button>
               </div>
             </>
           )}
@@ -1046,358 +1113,354 @@ export function DemoGuard() {
 
       {/* Cognitive N-Back */}
       {phase === 'cognitive-nback' && nbackTrials.length > 0 && nbackIndex < nbackTrials.length && (
-        <div style={{ textAlign: 'center', padding: 24 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cognitive Battery — N-Back (1-back)</h3>
-          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 16 }}>
-            Trial {nbackIndex + 1} / {nbackTrials.length} — Identique au précédent ?
-          </p>
-          <div style={{ fontSize: 64, fontWeight: 900, marginBottom: 24 }}>
-            {nbackTrials[nbackIndex].letter}
-          </div>
+        <div className="dg-card dg-challenge-area">
+          <h3 className="dg-challenge-title">Cognitive Battery — N-Back (1-back)</h3>
+          <p className="dg-challenge-sub">Trial {nbackIndex + 1} / {nbackTrials.length} — Same as previous?</p>
+          <div className="dg-nback-letter">{nbackTrials[nbackIndex].letter}</div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-            <button
-              onClick={() => handleNBackResponse(true)}
-              style={{
-                width: 120, height: 64, borderRadius: 12, border: 'none',
-                background: '#22c55e', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', touchAction: 'manipulation',
-              }}
-            >OUI (Match)</button>
-            <button
-              onClick={() => handleNBackResponse(false)}
-              style={{
-                width: 120, height: 64, borderRadius: 12, border: 'none',
-                background: '#6b7280', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', touchAction: 'manipulation',
-              }}
-            >NON</button>
+            <button onClick={() => handleNBackResponse(true)} className="dg-nback-btn" style={{ background: '#22c55e' }}>MATCH</button>
+            <button onClick={() => handleNBackResponse(false)} className="dg-nback-btn" style={{ background: '#6b7280' }}>NO</button>
           </div>
           <div style={{ marginTop: 16 }}>
-            <Button onClick={handleSkipNBack} variant="secondary">Skip N-Back</Button>
+            <button onClick={handleSkipNBack} className="dg-btn dg-btn-secondary">Skip N-Back</button>
           </div>
         </div>
       )}
 
       {/* Cognitive Trail Tap */}
       {phase === 'cognitive-trail-tap' && trailNodes.length > 0 && (
-        <div style={{ textAlign: 'center', padding: 24 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cognitive Battery — Trail Tap</h3>
-          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 16 }}>
-            Tapez les points dans l'ordre 1 → {trailNodes.length}
-          </p>
-          <div style={{ position: 'relative', width: 300, height: 400, margin: '0 auto', border: '1px solid var(--separator)', borderRadius: 12, background: 'var(--background)' }}>
+        <div className="dg-card dg-challenge-area">
+          <h3 className="dg-challenge-title">Cognitive Battery — Trail Tap</h3>
+          <p className="dg-challenge-sub">Tap dots in order 1 → {trailNodes.length}</p>
+          <div className="dg-trail-area">
             {trailNodes.map((node) => (
               <button
                 key={node.id}
                 onClick={() => handleTrailTap(node.id)}
-                style={{
-                  position: 'absolute',
-                  left: node.x, top: node.y,
-                  width: 44, height: 44, borderRadius: 22, border: '2px solid var(--blue)',
-                  background: 'var(--background)', color: 'var(--label)',
-                  fontSize: 18, fontWeight: 700, cursor: 'pointer', touchAction: 'manipulation',
-                }}
+                className="dg-trail-node"
+                style={{ left: node.x, top: node.y }}
               >
                 {node.id}
               </button>
             ))}
           </div>
           <div style={{ marginTop: 16 }}>
-            <Button onClick={handleSkipTrailTap} variant="secondary">Skip Trail Tap</Button>
+            <button onClick={handleSkipTrailTap} className="dg-btn dg-btn-secondary">Skip Trail Tap</button>
           </div>
         </div>
       )}
 
       {/* Cognitive Vocal RAN */}
       {phase === 'cognitive-vocal-ran' && vocalRanChallenge && (
-        <div style={{ textAlign: 'center', padding: 24 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cognitive Battery — Vocal RAN</h3>
-          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 16 }}>
-            Lisez les chiffres suivants à voix haute, dans l'ordre :
-          </p>
-          <div style={{ fontSize: 36, fontWeight: 800, letterSpacing: 12, marginBottom: 24 }}>
-            {vocalRanChallenge.sequence.join(' ')}
-          </div>
+        <div className="dg-card dg-challenge-area">
+          <h3 className="dg-challenge-title">Cognitive Battery — Vocal RAN</h3>
+          <p className="dg-challenge-sub">Read these numbers aloud, in order:</p>
+          <div className="dg-vocal-sequence">{vocalRanChallenge.sequence.join(' ')}</div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-            <Button onClick={handleVocalRanRecord} disabled={vocalRanRecording}>
+            <button onClick={handleVocalRanRecord} disabled={vocalRanRecording} className="dg-btn dg-btn-primary">
               {vocalRanRecording ? 'Recording...' : 'Record'}
-            </Button>
-            <Button onClick={handleSkipVocalRan} variant="secondary" disabled={vocalRanRecording}>Skip</Button>
+            </button>
+            <button onClick={handleSkipVocalRan} disabled={vocalRanRecording} className="dg-btn dg-btn-secondary">Skip</button>
           </div>
         </div>
       )}
 
       {/* Cognitive Summary */}
       {phase === 'cognitive-summary' && cogSummary && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 16 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Cognitive Proof Summary</h3>
-          <div style={{ fontSize: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--secondary-label)' }}>Modules completed:</span>
-              <span style={{ fontWeight: 600 }}>{cogSummary.completed_modules} / {cogSummary.total_modules}</span>
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Cognitive Proof Summary</h3>
+          <div className="dg-row"><span className="dg-row-label">Modules completed</span><span className="dg-row-value">{cogSummary.completed_modules} / {cogSummary.total_modules}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Cognitive depth</span><span className="dg-row-value" style={{ color: cogSummary.depth_score >= 0.65 ? 'var(--dg-green)' : 'var(--dg-amber)' }}>{(cogSummary.depth_score * 100).toFixed(0)}%</span></div>
+          <div className="dg-row"><span className="dg-row-label">Consistency</span><span className="dg-row-value">{(cogSummary.consistency_score * 100).toFixed(0)}%</span></div>
+          <div className="dg-row"><span className="dg-row-label">Anomaly</span><span className="dg-row-value" style={{ color: cogSummary.anomaly_score < 0.3 ? 'var(--dg-green)' : cogSummary.anomaly_score < 0.5 ? 'var(--dg-amber)' : 'var(--dg-red)' }}>{cogSummary.anomaly_score < 0.3 ? 'low' : cogSummary.anomaly_score < 0.5 ? 'medium' : 'high'}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Human likelihood</span><span className={`dg-badge ${cogSummary.human_likelihood === 'high' ? 'dg-badge-ok' : cogSummary.human_likelihood === 'medium' ? 'dg-badge-review' : 'dg-badge-failed'}`}>{cogSummary.human_likelihood}</span></div>
+          {cogSummary.depth_score < 0.65 && (
+            <div className="dg-interp dg-interp-medium">Cognitive depth is low ({(cogSummary.depth_score * 100).toFixed(0)}% below 65%). Submit with caution.</div>
+          )}
+          <div style={{ marginTop: 16 }}>
+            <button onClick={handleCognitiveContinue} className="dg-btn dg-btn-primary" style={{ width: '100%' }}>Continue to device signals</button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 5. Cognitive Battery Panel (results) ═══ */}
+      {cogReflexSignal && phase !== 'cognitive-intro' && phase !== 'cognitive-stroop' && phase !== 'cognitive-digit-span' && phase !== 'cognitive-nback' && phase !== 'cognitive-trail-tap' && phase !== 'cognitive-vocal-ran' && phase !== 'cognitive-summary' && (
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Cognitive Battery</h3>
+          <div className="dg-grid">
+            <div className="dg-grid-item">
+              <div className="dg-grid-item-header"><span className="dg-grid-item-label">Reflex</span><span className={`dg-badge ${cogReflexSignal.quality === 'ok' ? 'dg-badge-ok' : cogReflexSignal.quality === 'review' ? 'dg-badge-review' : 'dg-badge-missing'}`}>{cogReflexSignal.quality}</span></div>
+              <span className="dg-grid-item-detail">Avg {cogReflexSignal.avg_ms}ms · Med {cogReflexSignal.median_ms}ms</span>
+              <span className="dg-grid-item-detail">Fast: {cogReflexSignal.too_fast_count} · Slow: {cogReflexSignal.too_slow_count}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--secondary-label)' }}>Cognitive depth:</span>
-              <span style={{ fontWeight: 600, color: cogSummary.depth_score >= 0.65 ? 'var(--green)' : '#eab308' }}>
-                {(cogSummary.depth_score * 100).toFixed(0)}%
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--secondary-label)' }}>Consistency:</span>
-              <span style={{ fontWeight: 600 }}>{(cogSummary.consistency_score * 100).toFixed(0)}%</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--secondary-label)' }}>Anomaly:</span>
-              <span style={{ fontWeight: 600, color: cogSummary.anomaly_score < 0.3 ? 'var(--green)' : cogSummary.anomaly_score < 0.5 ? '#eab308' : '#ef4444' }}>
-                {cogSummary.anomaly_score < 0.3 ? 'low' : cogSummary.anomaly_score < 0.5 ? 'medium' : 'high'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--secondary-label)' }}>Human likelihood:</span>
-              <span style={{ fontWeight: 600, color: cogSummary.human_likelihood === 'high' ? 'var(--green)' : cogSummary.human_likelihood === 'medium' ? '#eab308' : '#ef4444' }}>
-                {cogSummary.human_likelihood}
-              </span>
-            </div>
-            {cogSummary.depth_score < 0.65 && (
-              <div style={{ marginTop: 8, padding: 8, borderRadius: 8, background: 'rgba(234, 179, 8, 0.1)', fontSize: 13, color: '#eab308' }}>
-                ⚠️ Cognitive depth is low ({(cogSummary.depth_score * 100).toFixed(0)}% below 65%). Submit with caution.
+            {cogStroopSignal && (
+              <div className="dg-grid-item">
+                <div className="dg-grid-item-header"><span className="dg-grid-item-label">Stroop</span><span className={`dg-badge ${cogStroopSignal.quality === 'ok' ? 'dg-badge-ok' : cogStroopSignal.quality === 'review' ? 'dg-badge-review' : 'dg-badge-missing'}`}>{cogStroopSignal.quality}</span></div>
+                <span className="dg-grid-item-detail">Acc {(cogStroopSignal.accuracy * 100).toFixed(0)}% · Conflict {cogStroopSignal.conflict_cost_ms}ms</span>
               </div>
             )}
-          </div>
-          <div style={{ marginTop: 16 }}>
-            <Button onClick={handleCognitiveContinue}>Continue to device signals</Button>
-          </div>
-        </div>
-      )}
-
-      {/* Cognitive module results (shown after battery) */}
-      {cogReflexSignal && phase !== 'cognitive-intro' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Reflex: {cogReflexSignal.quality === 'ok' ? '✅' : cogReflexSignal.quality === 'review' ? '⚠️' : '❌'}</h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span>Avg: {cogReflexSignal.avg_ms} ms | Median: {cogReflexSignal.median_ms} ms</span>
-            <span>Too fast: {cogReflexSignal.too_fast_count} | Too slow: {cogReflexSignal.too_slow_count}</span>
-            <span>Regularity: {cogReflexSignal.regularity_score}</span>
-          </div>
-        </div>
-      )}
-
-      {cogStroopSignal && phase !== 'cognitive-stroop' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Stroop: {cogStroopSignal.quality === 'ok' ? '✅' : cogStroopSignal.quality === 'review' ? '⚠️' : '❌'}</h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
-            <span>Accuracy: {(cogStroopSignal.accuracy * 100).toFixed(0)}% | Conflict cost: {cogStroopSignal.conflict_cost_ms} ms</span>
-          </div>
-        </div>
-      )}
-
-      {cogDigitSpanSignal && phase !== 'cognitive-digit-span' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Digit Span: {cogDigitSpanSignal.quality === 'ok' ? '✅' : cogDigitSpanSignal.quality === 'review' ? '⚠️' : '❌'}</h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
-            <span>Max span: {cogDigitSpanSignal.max_span} | Accuracy: {(cogDigitSpanSignal.accuracy * 100).toFixed(0)}%</span>
-          </div>
-        </div>
-      )}
-
-      {cogNBackSignal && phase !== 'cognitive-nback' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>N-Back: {cogNBackSignal.quality === 'ok' ? '✅' : cogNBackSignal.quality === 'review' ? '⚠️' : '❌'}</h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
-            <span>Hits: {cogNBackSignal.hits} | FP: {cogNBackSignal.false_positives} | Misses: {cogNBackSignal.misses}</span>
-          </div>
-        </div>
-      )}
-
-      {cogTrailTapSignal && phase !== 'cognitive-trail-tap' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Trail Tap: {cogTrailTapSignal.quality === 'ok' ? '✅' : cogTrailTapSignal.quality === 'review' ? '⚠️' : '❌'}</h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
-            <span>Completion: {cogTrailTapSignal.completion_ms} ms | Wrong: {cogTrailTapSignal.wrong_taps} | Efficiency: {cogTrailTapSignal.path_efficiency}</span>
-          </div>
-        </div>
-      )}
-
-      {cogVocalRanSignal && phase !== 'cognitive-vocal-ran' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Vocal RAN: {cogVocalRanSignal.quality === 'ok' ? '✅' : cogVocalRanSignal.quality === 'review' ? '⚠️' : '❌'}</h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
-            <span>Duration: {cogVocalRanSignal.duration_ms} ms | Audio: {cogVocalRanSignal.audio_present ? '✅' : '❌'}</span>
+            {cogDigitSpanSignal && (
+              <div className="dg-grid-item">
+                <div className="dg-grid-item-header"><span className="dg-grid-item-label">Digit Span</span><span className={`dg-badge ${cogDigitSpanSignal.quality === 'ok' ? 'dg-badge-ok' : cogDigitSpanSignal.quality === 'review' ? 'dg-badge-review' : 'dg-badge-missing'}`}>{cogDigitSpanSignal.quality}</span></div>
+                <span className="dg-grid-item-detail">Max span {cogDigitSpanSignal.max_span} · Acc {(cogDigitSpanSignal.accuracy * 100).toFixed(0)}%</span>
+              </div>
+            )}
+            {cogNBackSignal && (
+              <div className="dg-grid-item">
+                <div className="dg-grid-item-header"><span className="dg-grid-item-label">N-Back</span><span className={`dg-badge ${cogNBackSignal.quality === 'ok' ? 'dg-badge-ok' : cogNBackSignal.quality === 'review' ? 'dg-badge-review' : 'dg-badge-missing'}`}>{cogNBackSignal.quality}</span></div>
+                <span className="dg-grid-item-detail">Hits {cogNBackSignal.hits} · FP {cogNBackSignal.false_positives} · Miss {cogNBackSignal.misses}</span>
+              </div>
+            )}
+            {cogTrailTapSignal && (
+              <div className="dg-grid-item">
+                <div className="dg-grid-item-header"><span className="dg-grid-item-label">Trail Tap</span><span className={`dg-badge ${cogTrailTapSignal.quality === 'ok' ? 'dg-badge-ok' : cogTrailTapSignal.quality === 'review' ? 'dg-badge-review' : 'dg-badge-missing'}`}>{cogTrailTapSignal.quality}</span></div>
+                <span className="dg-grid-item-detail">Time {cogTrailTapSignal.completion_ms}ms · Wrong {cogTrailTapSignal.wrong_taps}</span>
+              </div>
+            )}
+            {cogVocalRanSignal && (
+              <div className="dg-grid-item">
+                <div className="dg-grid-item-header"><span className="dg-grid-item-label">Vocal RAN</span><span className={`dg-badge ${cogVocalRanSignal.quality === 'ok' ? 'dg-badge-ok' : cogVocalRanSignal.quality === 'review' ? 'dg-badge-review' : 'dg-badge-missing'}`}>{cogVocalRanSignal.quality}</span></div>
+                <span className="dg-grid-item-detail">Duration {cogVocalRanSignal.duration_ms}ms · Audio {cogVocalRanSignal.audio_present ? 'yes' : 'no'}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {/* Device signals loading */}
       {phase === 'device-signals' && (
-        <div style={{ textAlign: 'center', padding: 24 }}>
-          <p style={{ color: 'var(--secondary-label)', fontSize: 14 }}>
-            Collecting device signals...
-          </p>
+        <div className="dg-card dg-challenge-area">
+          <div className="dg-spinner" style={{ margin: '0 auto' }} />
+          <p className="dg-challenge-sub" style={{ marginTop: 12 }}>Collecting device signals...</p>
         </div>
       )}
 
-      {/* Motion result */}
-      {motionSignal && phase !== 'device-signals' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
-            Motion: {motionSignal.quality === 'ok' ? '✅ OK' : motionSignal.quality === 'unsupported' ? '⚠️ Unsupported' : motionSignal.quality === 'low' ? '⚠️ Low' : '❌ Missing'}
-          </h3>
-          {motionSignal.supported && (
-            <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
-              <span>Samples: {motionSignal.sample_count}</span>
+      {/* ═══ 3. Signal Matrix (8 signals) ═══ */}
+      {phase !== 'device-signals' && phase !== 'idle' && (motionSignal || orientationSignal || touchSignal || visibilitySignal || networkSignal) && (
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Signal Matrix</h3>
+          <div className="dg-grid">
+            <div className="dg-grid-item">
+              <div className="dg-grid-item-header"><span className="dg-grid-item-label">Motion</span><span className={`dg-badge ${motionSignal?.quality === 'ok' ? 'dg-badge-ok' : motionSignal?.quality === 'unsupported' ? 'dg-badge-unsupported' : motionSignal?.quality === 'low' ? 'dg-badge-review' : 'dg-badge-missing'}`}>{motionSignal?.quality ?? '—'}</span></div>
+              {motionSignal?.supported && <span className="dg-grid-item-detail">{motionSignal.sample_count} samples</span>}
             </div>
-          )}
-        </div>
-      )}
-
-      {/* Orientation result */}
-      {orientationSignal && phase !== 'device-signals' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
-            Orientation: {orientationSignal.quality === 'ok' ? '✅ OK' : orientationSignal.quality === 'unsupported' ? '⚠️ Unsupported' : orientationSignal.quality === 'low' ? '⚠️ Low' : '❌ Missing'}
-          </h3>
-          {orientationSignal.supported && (
-            <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
-              <span>Changes: {orientationSignal.changes}</span>
+            <div className="dg-grid-item">
+              <div className="dg-grid-item-header"><span className="dg-grid-item-label">Orientation</span><span className={`dg-badge ${orientationSignal?.quality === 'ok' ? 'dg-badge-ok' : orientationSignal?.quality === 'unsupported' ? 'dg-badge-unsupported' : orientationSignal?.quality === 'low' ? 'dg-badge-review' : 'dg-badge-missing'}`}>{orientationSignal?.quality ?? '—'}</span></div>
+              {orientationSignal?.supported && <span className="dg-grid-item-detail">{orientationSignal.changes} changes</span>}
             </div>
-          )}
-        </div>
-      )}
-
-      {/* Touch result */}
-      {touchSignal && phase !== 'device-signals' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
-            Touch: {touchSignal.quality === 'ok' ? '✅ OK' : '❌ Missing'}
-          </h3>
-          {touchSignal.touch_count > 0 && (
-            <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
-              <span>Touches: {touchSignal.touch_count}</span>
-              {touchSignal.multi_touch_detected && <span> | Multi: ✅</span>}
+            <div className="dg-grid-item">
+              <div className="dg-grid-item-header"><span className="dg-grid-item-label">Touch</span><span className={`dg-badge ${touchSignal?.quality === 'ok' ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{touchSignal?.quality ?? '—'}</span></div>
+              {touchSignal && touchSignal.touch_count > 0 && <span className="dg-grid-item-detail">{touchSignal.touch_count} touches{touchSignal.multi_touch_detected ? ' · multi' : ''}</span>}
             </div>
-          )}
-        </div>
-      )}
-
-      {/* Visibility result */}
-      {visibilitySignal && phase !== 'device-signals' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
-            Focus: {visibilitySignal.quality === 'ok' ? '✅ OK' : '⚠️ Warning'}
-          </h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
-            <span>Blur: {visibilitySignal.blur_count}</span>
-            <span> | Hidden: {visibilitySignal.visibility_hidden_count}</span>
+            <div className="dg-grid-item">
+              <div className="dg-grid-item-header"><span className="dg-grid-item-label">Focus</span><span className={`dg-badge ${visibilitySignal?.quality === 'ok' ? 'dg-badge-ok' : 'dg-badge-review'}`}>{visibilitySignal?.quality ?? '—'}</span></div>
+              {visibilitySignal && <span className="dg-grid-item-detail">Blur {visibilitySignal.blur_count} · Hidden {visibilitySignal.visibility_hidden_count}</span>}
+            </div>
+            <div className="dg-grid-item">
+              <div className="dg-grid-item-header"><span className="dg-grid-item-label">Network</span><span className={`dg-badge ${networkSignal?.quality === 'ok' ? 'dg-badge-ok' : networkSignal?.quality === 'unsupported' ? 'dg-badge-unsupported' : 'dg-badge-missing'}`}>{networkSignal?.quality ?? '—'}</span></div>
+              {networkSignal && <span className="dg-grid-item-detail">{networkSignal.online ? 'online' : 'offline'}{networkSignal.effective_type ? ` · ${networkSignal.effective_type}` : ''}</span>}
+            </div>
+            <div className="dg-grid-item">
+              <div className="dg-grid-item-header"><span className="dg-grid-item-label">Camera</span><span className={`dg-badge ${selfieSignal?.captured ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{selfieSignal?.captured ? 'OK' : 'MISSING'}</span></div>
+              {selfieSignal?.captured && <span className="dg-grid-item-detail">{selfieSignal.quality}</span>}
+            </div>
+            <div className="dg-grid-item">
+              <div className="dg-grid-item-header"><span className="dg-grid-item-label">Voice</span><span className={`dg-badge ${voiceSignal?.recorded ? 'dg-badge-recorded' : 'dg-badge-missing'}`}>{voiceSignal?.recorded ? 'OK' : 'MISSING'}</span></div>
+              {voiceSignal?.recorded && <span className="dg-grid-item-detail">{voiceSignal.duration_ms}ms</span>}
+            </div>
+            <div className="dg-grid-item">
+              <div className="dg-grid-item-header"><span className="dg-grid-item-label">Reaction</span><span className={`dg-badge ${reactionSignal?.quality === 'ok' ? 'dg-badge-ok' : reactionSignal?.quality === 'low' ? 'dg-badge-review' : 'dg-badge-missing'}`}>{reactionSignal?.quality ?? '—'}</span></div>
+              {reactionSignal?.reaction_ms != null && <span className="dg-grid-item-detail">Avg {reactionSignal.reaction_ms}ms</span>}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Network result */}
-      {networkSignal && phase !== 'device-signals' && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
-            Network: {networkSignal.quality === 'ok' ? '✅ OK' : networkSignal.quality === 'unsupported' ? '⚠️ Unsupported' : '❌ Missing'}
-          </h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
-            <span>Online: {networkSignal.online ? '✅' : '❌'}</span>
-            {networkSignal.effective_type && <span> | {networkSignal.effective_type}</span>}
-          </div>
-        </div>
-      )}
-
-      {/* Step 6: Sensor readiness (separate from cognitive) */}
+      {/* ═══ 2. Progress Rings ═══ */}
       {quality && (phase === 'readiness' || phase === 'submitting' || phase === 'done' || phase === 'error') && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Sensor Readiness</h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span>Completeness: {(completeness * 100).toFixed(0)}%</span>
-            <span>Device ready: {quality.device_ready ? '✅' : '❌'}</span>
-            <span>Permissions ready: {quality.permissions_ready ? '✅' : '❌'}</span>
-            <span>Overall ready: {quality.overall_ready ? '✅' : '❌'}</span>
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Progress Rings</h3>
+          <div className="dg-rings">
+            {[
+              { label: 'Sensors', value: sensorScore, color: '#06b6d4' },
+              { label: 'Cognitive', value: cognitiveScore, color: '#8b5cf6' },
+              { label: 'Voice', value: voiceScore, color: '#10b981' },
+            ].map((ring) => {
+              const circumference = 2 * Math.PI * 28;
+              const offset = circumference - (ring.value / 100) * circumference;
+              return (
+                <div key={ring.label} className="dg-ring">
+                  <svg className="dg-ring-svg" viewBox="0 0 64 64">
+                    <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(56,189,248,0.1)" strokeWidth="4" />
+                    <circle cx="32" cy="32" r="28" fill="none" stroke={ring.color} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} transform="rotate(-90 32 32)" />
+                    <text x="32" y="36" textAnchor="middle" className="dg-ring-value">{ring.value}</text>
+                  </svg>
+                  <span className="dg-ring-label">{ring.label}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Cognitive depth summary (shown alongside sensor readiness) */}
+      {/* ═══ 4. Cognitive Science Summary ═══ */}
       {cogSummary && (phase === 'readiness' || phase === 'submitting' || phase === 'done' || phase === 'error') && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Cognitive Depth</h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span>Modules: {cogSummary.completed_modules} / {cogSummary.total_modules}</span>
-            <span>Depth: {(cogSummary.depth_score * 100).toFixed(0)}%</span>
-            <span>Consistency: {(cogSummary.consistency_score * 100).toFixed(0)}%</span>
-            <span>Human likelihood: {cogSummary.human_likelihood}</span>
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Cognitive Science</h3>
+          <div className="dg-row"><span className="dg-row-label">Modules</span><span className="dg-row-value">{cogSummary.completed_modules} / {cogSummary.total_modules}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Depth</span><span className="dg-row-value" style={{ color: cogSummary.depth_score >= 0.65 ? 'var(--dg-green)' : 'var(--dg-amber)' }}>{(cogSummary.depth_score * 100).toFixed(0)}%</span></div>
+          <div className="dg-row"><span className="dg-row-label">Consistency</span><span className="dg-row-value">{(cogSummary.consistency_score * 100).toFixed(0)}%</span></div>
+          <div className="dg-row"><span className="dg-row-label">Anomaly</span><span className="dg-row-value" style={{ color: cogSummary.anomaly_score < 0.3 ? 'var(--dg-green)' : cogSummary.anomaly_score < 0.5 ? 'var(--dg-amber)' : 'var(--dg-red)' }}>{cogSummary.anomaly_score < 0.3 ? 'low' : cogSummary.anomaly_score < 0.5 ? 'medium' : 'high'}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Human likelihood</span><span className={`dg-badge ${cogSummary.human_likelihood === 'high' ? 'dg-badge-ok' : cogSummary.human_likelihood === 'medium' ? 'dg-badge-review' : 'dg-badge-failed'}`}>{cogSummary.human_likelihood}</span></div>
+          <div className={`dg-interp ${cogSummary.human_likelihood === 'high' ? 'dg-interp-strong' : cogSummary.human_likelihood === 'medium' ? 'dg-interp-medium' : 'dg-interp-weak'}`}>
+            {cogSummary.human_likelihood === 'high'
+              ? 'Cognitive profile strongly suggests human liveness across multiple domains.'
+              : cogSummary.human_likelihood === 'medium'
+              ? 'Cognitive profile is ambiguous — some modules show non-human patterns.'
+              : 'Cognitive profile shows significant anomaly — review recommended.'}
           </div>
         </div>
       )}
 
-      {/* Step 7: Submit with cognitive depth warning */}
-      {quality && phase === 'readiness' && (
-        <div>
-          {cogSummary && cogSummary.depth_score < 0.65 && (
-            <div style={{ marginBottom: 8, padding: 10, borderRadius: 8, background: 'rgba(234, 179, 8, 0.1)', fontSize: 13, color: '#eab308' }}>
-              ⚠️ Cognitive depth is low ({(cogSummary.depth_score * 100).toFixed(0)}% below 65%). Submit with caution.
-            </div>
+      {/* ═══ 6. Voice Integrity Panel ═══ */}
+      {reconciledVocalDiag && (phase === 'readiness' || phase === 'submitting' || phase === 'done' || phase === 'error') && (
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Voice Integrity</h3>
+          <div className="dg-row"><span className="dg-row-label">Audio pipeline</span><span className={`dg-badge ${reconciledVocalDiag.audioPipelineStatus === 'captured' ? 'dg-badge-ok' : reconciledVocalDiag.audioPipelineStatus === 'missing' ? 'dg-badge-missing' : reconciledVocalDiag.audioPipelineStatus === 'permission_denied' ? 'dg-badge-failed' : 'dg-badge-unsupported'}`}>{reconciledVocalDiag.audioPipelineStatus}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Analysis mode</span><span className="dg-row-value">{reconciledVocalDiag.analysisMode.replace(/_/g, ' ')}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Audio captured</span><span className={`dg-badge ${reconciledVocalDiag.audioCaptured ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{reconciledVocalDiag.audioCaptured ? 'YES' : 'NO'}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Payload prepared</span><span className={`dg-badge ${reconciledVocalDiag.payloadPrepared ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{reconciledVocalDiag.payloadPrepared ? 'YES' : 'NO'}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Relay attempted</span><span className={`dg-badge ${reconciledVocalDiag.relayAttempted ? 'dg-badge-ok' : 'dg-badge-skipped'}`}>{reconciledVocalDiag.relayAttempted ? 'YES' : 'NO'}</span></div>
+          {reconciledVocalDiag.relayAttempted && <div className="dg-row"><span className="dg-row-label">Relay accepted</span><span className={`dg-badge ${reconciledVocalDiag.relayAccepted ? 'dg-badge-ok' : 'dg-badge-failed'}`}>{reconciledVocalDiag.relayAccepted ? 'YES' : 'NO'}</span></div>}
+          <div className="dg-row"><span className="dg-row-label">Analyzed (HCS)</span><span className={`dg-badge ${reconciledVocalDiag.analyzed ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{reconciledVocalDiag.analyzed ? 'YES' : 'NO'}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Vocal status</span><span className={`dg-badge ${reconciledVocalDiag.vocalStatus === 'passed' ? 'dg-badge-ok' : reconciledVocalDiag.vocalStatus === 'failed' ? 'dg-badge-failed' : reconciledVocalDiag.vocalStatus === 'review' ? 'dg-badge-review' : 'dg-badge-skipped'}`}>{reconciledVocalDiag.vocalStatus}</span></div>
+          {reconciledVocalDiag.durationMs != null && <div className="dg-row"><span className="dg-row-label">Duration</span><span className="dg-row-value">{reconciledVocalDiag.durationMs} ms</span></div>}
+          <div className="dg-row"><span className="dg-row-label">Size bucket</span><span className="dg-row-value">{reconciledVocalDiag.audioSizeBucket}</span></div>
+          {reconciledVocalDiag.confidenceLevel && <div className="dg-row"><span className="dg-row-label">Confidence</span><span className="dg-row-value">{reconciledVocalDiag.confidenceLevel}</span></div>}
+          <div className="dg-row"><span className="dg-row-label">Reason</span><span className="dg-row-value dg-row-value-mono">{reconciledVocalDiag.reasonSafe}</span></div>
+          {reconciledVocalDiag.latencyMs != null && <div className="dg-row"><span className="dg-row-label">Latency</span><span className="dg-row-value">{reconciledVocalDiag.latencyMs} ms</span></div>}
+          {vocalWording && (
+            <div className={`dg-interp ${reconciledVocalDiag.vocalStatus === 'passed' ? 'dg-interp-strong' : 'dg-interp-medium'}`}>{vocalWording}</div>
           )}
-          {cogSummary && cogSummary.completed_modules < 4 && (
-            <div style={{ marginBottom: 8, padding: 10, borderRadius: 8, background: 'rgba(234, 179, 8, 0.1)', fontSize: 13, color: '#eab308' }}>
-              ⚠️ Only {cogSummary.completed_modules} cognitive modules completed. Recommended: 4+.
-            </div>
-          )}
-          <Button
-            onClick={handleSubmit}
-            disabled={!sessionPublicId.trim()}
-            variant="secondary"
-          >
-            Submit DemoGuard
-          </Button>
         </div>
       )}
 
-      {/* Step 8: Safe response */}
+      {/* ═══ 7. Hybrid Vector Decision Panel ═══ */}
       {response && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--green)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Response</h3>
-          <div style={{ fontSize: 13, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span>Received: {response.received ? '✅' : '❌'}</span>
-            {response.traceId && <span>Trace ID: {response.traceId}</span>}
-            {response.quality_score != null && <span>Quality score: {(response.quality_score * 100).toFixed(0)}%</span>}
-            <span>Ready: {response.ready ? '✅' : '❌'}</span>
-            {response.message && <span>Message: {response.message}</span>}
-            {response.hybridFusion && (
-              <>
-                <span>Fusion: {response.hybridFusion.triggered ? '✅' : '❌'}{response.hybridFusion.globalDecision ? ` | ${response.hybridFusion.globalDecision}` : ''}</span>
-                {response.hybridFusion.trustLevel && <span>Trust level: {response.hybridFusion.trustLevel}</span>}
-                {response.hybridFusion.cognitiveStatus && <span>Cognitive: {response.hybridFusion.cognitiveStatus}</span>}
-                {response.hybridFusion.vocalStatus && <span>Vocal: {response.hybridFusion.vocalStatus}</span>}
-                {response.hybridFusion.vocalDiagnostic && (
-                  <>
-                    <span style={{ marginTop: 4, fontWeight: 600 }}>Vocal Diagnostic</span>
-                    <span>Microphone: {response.hybridFusion.vocalDiagnostic.microphonePermission}</span>
-                    <span>Audio captured: {response.hybridFusion.vocalDiagnostic.audioCaptured ? '✅' : '❌'}</span>
-                    <span>Payload prepared: {response.hybridFusion.vocalDiagnostic.payloadPrepared ? '✅' : '❌'}</span>
-                    <span>Relay attempted: {response.hybridFusion.vocalDiagnostic.relayAttempted ? '✅' : '❌'}</span>
-                    {response.hybridFusion.vocalDiagnostic.relayAttempted && <span>Relay accepted: {response.hybridFusion.vocalDiagnostic.relayAccepted ? '✅' : '❌'}</span>}
-                    <span>Analyzed: {response.hybridFusion.vocalDiagnostic.analyzed ? '✅' : '❌'}</span>
-                    <span>Reason: {response.hybridFusion.vocalDiagnostic.reasonSafe}</span>
-                    {response.hybridFusion.vocalDiagnostic.latencyMs != null && <span>Latency: {response.hybridFusion.vocalDiagnostic.latencyMs} ms</span>}
-                  </>
-                )}
-                {response.hybridFusion.monitoringStatus != null && (
-                  <span>Monitoring: {response.hybridFusion.monitoringStatus === 'recorded' ? '✅ Recorded' : response.hybridFusion.monitoringStatus === 'pending' ? '⏳ Pending' : '❌ Failed'}</span>
-                ) || response.hybridFusion.monitoringRecorded != null && (
-                  <span>Monitoring: {response.hybridFusion.monitoringRecorded ? '✅ Recorded' : '❌ Not recorded'}</span>
-                )}
-              </>
-            )}
-          </div>
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Hybrid Vector Decision</h3>
+          {response.traceId && <div className="dg-row"><span className="dg-row-label">Trace ID</span><span className="dg-row-value dg-row-value-mono">{response.traceId.slice(0, 16)}…</span></div>}
+          <div className="dg-row"><span className="dg-row-label">Received</span><span className={`dg-badge ${response.received ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{response.received ? 'YES' : 'NO'}</span></div>
+          {response.quality_score != null && <div className="dg-row"><span className="dg-row-label">Quality score</span><span className="dg-row-value">{(response.quality_score * 100).toFixed(0)}%</span></div>}
+          <div className="dg-row"><span className="dg-row-label">Ready</span><span className={`dg-badge ${response.ready ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{response.ready ? 'YES' : 'NO'}</span></div>
+          {response.hybridFusion && (
+            <>
+              <div className="dg-row"><span className="dg-row-label">Fusion triggered</span><span className={`dg-badge ${response.hybridFusion.triggered ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{response.hybridFusion.triggered ? 'YES' : 'NO'}</span></div>
+              {response.hybridFusion.globalDecision && <div className="dg-row"><span className="dg-row-label">Global decision</span><span className={`dg-badge ${response.hybridFusion.globalDecision === 'ACCEPT' ? 'dg-badge-ok' : response.hybridFusion.globalDecision === 'REVIEW' ? 'dg-badge-review' : 'dg-badge-failed'}`}>{response.hybridFusion.globalDecision}</span></div>}
+              {response.hybridFusion.trustLevel && <div className="dg-row"><span className="dg-row-label">Trust level</span><span className="dg-row-value">{response.hybridFusion.trustLevel}</span></div>}
+              {response.hybridFusion.cognitiveStatus && <div className="dg-row"><span className="dg-row-label">Cognitive</span><span className={`dg-badge ${response.hybridFusion.cognitiveStatus === 'passed' ? 'dg-badge-ok' : response.hybridFusion.cognitiveStatus === 'review' ? 'dg-badge-review' : 'dg-badge-failed'}`}>{response.hybridFusion.cognitiveStatus}</span></div>}
+              {response.hybridFusion.vocalStatus && <div className="dg-row"><span className="dg-row-label">Vocal</span><span className={`dg-badge ${response.hybridFusion.vocalStatus === 'passed' ? 'dg-badge-ok' : response.hybridFusion.vocalStatus === 'review' ? 'dg-badge-review' : 'dg-badge-failed'}`}>{response.hybridFusion.vocalStatus}</span></div>}
+            </>
+          )}
+          {responseMessage && (
+            <div className={`dg-interp ${response.status === 'submitted' ? 'dg-interp-strong' : response.status === 'review' ? 'dg-interp-medium' : 'dg-interp-weak'}`}>{responseMessage}</div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ 8. Brain / Monitoring Panel ═══ */}
+      {response?.hybridFusion && (monitoringLabel || response.hybridFusion.vocalDiagnostic) && (
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Brain / Monitoring</h3>
+          {monitoringLabel && (
+            <div className="dg-row"><span className="dg-row-label">Monitoring</span><span className={`dg-badge ${monitoringLabel === 'Recorded' ? 'dg-badge-ok' : monitoringLabel === 'Pending' ? 'dg-badge-pending' : 'dg-badge-failed'}`}>{monitoringLabel}</span></div>
+          )}
+          {response.hybridFusion.vocalDiagnostic && (
+            <>
+              <div className="dg-row"><span className="dg-row-label">Vocal relay</span><span className={`dg-badge ${response.hybridFusion.vocalDiagnostic.relayAttempted ? 'dg-badge-ok' : 'dg-badge-skipped'}`}>{response.hybridFusion.vocalDiagnostic.relayAttempted ? 'ATTEMPTED' : 'SKIPPED'}</span></div>
+              {response.hybridFusion.vocalDiagnostic.relayAttempted && <div className="dg-row"><span className="dg-row-label">Relay accepted</span><span className={`dg-badge ${response.hybridFusion.vocalDiagnostic.relayAccepted ? 'dg-badge-ok' : 'dg-badge-failed'}`}>{response.hybridFusion.vocalDiagnostic.relayAccepted ? 'YES' : 'NO'}</span></div>}
+              <div className="dg-row"><span className="dg-row-label">HCS analyzed</span><span className={`dg-badge ${response.hybridFusion.vocalDiagnostic.analyzed ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{response.hybridFusion.vocalDiagnostic.analyzed ? 'YES' : 'NO'}</span></div>
+              {response.hybridFusion.vocalDiagnostic.latencyMs != null && <div className="dg-row"><span className="dg-row-label">Latency</span><span className="dg-row-value">{response.hybridFusion.vocalDiagnostic.latencyMs} ms</span></div>}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Warnings (shown during readiness) */}
+      {quality && phase === 'readiness' && submitWarnings.length > 0 && (
+        <div className="dg-card">
+          {submitWarnings.map((w, i) => (
+            <div key={i} className="dg-warning-box" style={{ marginBottom: i < submitWarnings.length - 1 ? 8 : 0 }}>{w}</div>
+          ))}
         </div>
       )}
 
       {/* Error display */}
-      {error && (
-        <div style={{ borderRadius: 10, border: '1px solid var(--red)', padding: 12 }}>
-          <p style={{ fontSize: 14, color: 'var(--red)' }}>{error}</p>
+      {error && phase === 'error' && (
+        <div className="dg-error-box">
+          {error}
+          <div style={{ marginTop: 12 }}>
+            <button onClick={handleSubmit} className="dg-btn dg-btn-danger" style={{ width: '100%' }}>Retry Submit</button>
+          </div>
         </div>
       )}
+
+      {/* Success display */}
+      {response && phase === 'done' && (
+        <div className="dg-success-box">
+          DemoGuard session submitted successfully. {responseMessage ?? ''}
+        </div>
+      )}
+
+      {/* ═══ 9. Sticky Bottom Action Bar ═══ */}
+      <div className="dg-sticky-bar">
+        <div className="dg-sticky-status">
+          {submitBlockReasons.length > 0 ? (
+            <>
+              <span className="dg-sticky-status-label" style={{ color: 'var(--dg-red)' }}>Blocked</span>
+              <span className="dg-sticky-status-detail">{submitBlockReasons[0]}</span>
+            </>
+          ) : isSubmitting ? (
+            <>
+              <span className="dg-sticky-status-label">Submitting</span>
+              <span className="dg-sticky-status-detail">Sending to Hybrid Vector...</span>
+            </>
+          ) : isSubmitted ? (
+            <>
+              <span className="dg-sticky-status-label" style={{ color: 'var(--dg-green)' }}>Submitted</span>
+              <span className="dg-sticky-status-detail">{response?.hybridFusion?.globalDecision ?? response?.status ?? 'Done'}</span>
+            </>
+          ) : phase === 'readiness' ? (
+            <>
+              <span className="dg-sticky-status-label">Ready to submit</span>
+              <span className="dg-sticky-status-detail">{submitWarnings.length > 0 ? `${submitWarnings.length} warning(s)` : 'All signals collected'}</span>
+            </>
+          ) : phase !== 'idle' ? (
+            <>
+              <span className="dg-sticky-status-label">Collecting</span>
+              <span className="dg-sticky-status-detail">Phase: {phase.replace(/-/g, ' ')}</span>
+            </>
+          ) : (
+            <>
+              <span className="dg-sticky-status-label">Idle</span>
+              <span className="dg-sticky-status-detail">Enter session ID to begin</span>
+            </>
+          )}
+        </div>
+        <div className="dg-sticky-actions">
+          {phase === 'error' ? (
+            <button onClick={handleSubmit} disabled={isSubmitting} className="dg-btn dg-btn-danger">Retry</button>
+          ) : isSubmitted ? (
+            response?.traceId ? (
+              <button onClick={() => navigator.clipboard?.writeText(response.traceId!)} className="dg-btn dg-btn-secondary">Copy Trace</button>
+            ) : null
+          ) : phase === 'readiness' && canSubmit ? (
+            <button onClick={handleSubmit} disabled={isSubmitting} className="dg-btn dg-btn-primary">
+              {isSubmitting ? <span className="dg-spinner" /> : 'Submit'}
+            </button>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

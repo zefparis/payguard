@@ -71,6 +71,8 @@ export async function recordVoiceChallenge(
           confidenceLevel: null,
           reasonSafe: 'audio_missing',
           latencyMs: null,
+          analysisMode: 'skipped',
+          audioPipelineStatus: 'missing',
         },
       };
     }
@@ -113,6 +115,8 @@ export async function recordVoiceChallenge(
         confidenceLevel: null,
         reasonSafe: 'not_attempted',
         latencyMs: null,
+        analysisMode: durationMsActual > 2000 ? 'full_audio' : 'metadata_only',
+        audioPipelineStatus: durationMsActual > 2000 ? 'captured' : 'too_short',
       },
     };
   } catch (err) {
@@ -135,6 +139,8 @@ export async function recordVoiceChallenge(
             confidenceLevel: null,
             reasonSafe: 'voice_missing',
             latencyMs: null,
+            analysisMode: 'skipped',
+            audioPipelineStatus: 'permission_denied',
           },
         };
       }
@@ -155,6 +161,8 @@ export async function recordVoiceChallenge(
           confidenceLevel: null,
           reasonSafe: 'voice_missing',
           latencyMs: null,
+          analysisMode: 'skipped',
+          audioPipelineStatus: 'unsupported',
         },
       };
     }
@@ -175,6 +183,8 @@ export async function recordVoiceChallenge(
         confidenceLevel: null,
         reasonSafe: 'voice_missing',
         latencyMs: null,
+        analysisMode: 'failed',
+        audioPipelineStatus: 'missing',
       },
     };
   }

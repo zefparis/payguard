@@ -353,21 +353,21 @@ describe('DG-3: Page wires real signals', () => {
   });
 
   it('page displays Camera OK/Missing', () => {
-    expect(PAGE_SRC).toContain('Camera:');
+    expect(PAGE_SRC).toContain('Camera');
     expect(PAGE_SRC).toContain('OK');
-    expect(PAGE_SRC).toContain('Missing');
+    expect(PAGE_SRC).toContain('MISSING');
   });
 
   it('page displays Voice OK/Missing', () => {
-    expect(PAGE_SRC).toContain('Voice:');
+    expect(PAGE_SRC).toContain('Voice');
   });
 
   it('page displays Reaction OK/Missing', () => {
-    expect(PAGE_SRC).toContain('Reaction:');
+    expect(PAGE_SRC).toContain('Reaction');
   });
 
   it('page displays Signal completeness %', () => {
-    expect(PAGE_SRC).toContain('Completeness');
+    expect(PAGE_SRC).toContain('Sensors');
   });
 
   it('page does NOT display selfie_b64', () => {

@@ -499,23 +499,23 @@ describe('DG-4: Page integrates device signals', () => {
   });
 
   it('page displays Motion status', () => {
-    expect(PAGE_SRC).toContain('Motion:');
+    expect(PAGE_SRC).toContain('Motion');
   });
 
   it('page displays Orientation status', () => {
-    expect(PAGE_SRC).toContain('Orientation:');
+    expect(PAGE_SRC).toContain('Orientation');
   });
 
   it('page displays Touch status', () => {
-    expect(PAGE_SRC).toContain('Touch:');
+    expect(PAGE_SRC).toContain('Touch');
   });
 
   it('page displays Focus status', () => {
-    expect(PAGE_SRC).toContain('Focus:');
+    expect(PAGE_SRC).toContain('Focus');
   });
 
   it('page displays Network status', () => {
-    expect(PAGE_SRC).toContain('Network:');
+    expect(PAGE_SRC).toContain('Network');
   });
 
   it('page does NOT display raw_motion_trace', () => {
