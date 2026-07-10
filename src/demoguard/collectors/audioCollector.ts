@@ -9,7 +9,14 @@
  */
 
 import { recordAudio, computeVocalEmbedding } from '../../lib/audio';
-import type { DemoGuardVoiceSignal } from '../types';
+import type { DemoGuardVoiceSignal, DemoGuardVoiceDiagnostic } from '../types';
+
+function computeAudioSizeBucket(byteLength: number): DemoGuardVoiceDiagnostic['audioSizeBucket'] {
+  if (byteLength === 0) return 'none';
+  if (byteLength < 2048) return 'small';
+  if (byteLength < 16384) return 'medium';
+  return 'large';
+}
 
 export const VOICE_DURATION_MS = 4000;
 
@@ -22,6 +29,7 @@ export interface AudioCollectorResult {
   safe: DemoGuardVoiceSignal;
   sensitive: { voice_b64: string; mfcc_summary: number[] } | null;
   error: AudioCollectorError | null;
+  diagnostic: DemoGuardVoiceDiagnostic;
 }
 
 export function generateChallengeId(): string {
@@ -50,6 +58,20 @@ export async function recordVoiceChallenge(
         safe: { recorded: false, quality: 'missing', challenge_id: challengeId },
         sensitive: null,
         error: { kind: 'other', message: 'No audio samples captured' },
+        diagnostic: {
+          microphonePermission: 'granted',
+          audioCaptured: false,
+          durationMs: null,
+          audioSizeBucket: 'none',
+          payloadPrepared: false,
+          relayAttempted: false,
+          relayAccepted: false,
+          analyzed: false,
+          vocalStatus: 'not_checked',
+          confidenceLevel: null,
+          reasonSafe: 'audio_missing',
+          latencyMs: null,
+        },
       };
     }
 
@@ -63,6 +85,7 @@ export async function recordVoiceChallenge(
     const quality: 'ok' | 'low' = durationMsActual > 2000 ? 'ok' : 'low';
 
     const voiceB64 = btoa(String.fromCharCode(...new Uint8Array(samples[0].buffer.slice(0, 1024))));
+    const audioByteLength = samples[0].buffer.byteLength;
 
     return {
       safe: {
@@ -77,6 +100,20 @@ export async function recordVoiceChallenge(
         mfcc_summary: mfccSummary,
       },
       error: null,
+      diagnostic: {
+        microphonePermission: 'granted',
+        audioCaptured: true,
+        durationMs: durationMsActual,
+        audioSizeBucket: computeAudioSizeBucket(audioByteLength),
+        payloadPrepared: true,
+        relayAttempted: false,
+        relayAccepted: false,
+        analyzed: false,
+        vocalStatus: 'not_checked',
+        confidenceLevel: null,
+        reasonSafe: 'not_attempted',
+        latencyMs: null,
+      },
     };
   } catch (err) {
     if (err instanceof DOMException) {
@@ -85,18 +122,60 @@ export async function recordVoiceChallenge(
           safe: { recorded: false, quality: 'missing', challenge_id: challengeId },
           sensitive: null,
           error: { kind: 'permission-denied' },
+          diagnostic: {
+            microphonePermission: 'denied',
+            audioCaptured: false,
+            durationMs: null,
+            audioSizeBucket: 'none',
+            payloadPrepared: false,
+            relayAttempted: false,
+            relayAccepted: false,
+            analyzed: false,
+            vocalStatus: 'not_checked',
+            confidenceLevel: null,
+            reasonSafe: 'voice_missing',
+            latencyMs: null,
+          },
         };
       }
       return {
         safe: { recorded: false, quality: 'missing', challenge_id: challengeId },
         sensitive: null,
         error: { kind: 'unavailable' },
+        diagnostic: {
+          microphonePermission: 'unknown',
+          audioCaptured: false,
+          durationMs: null,
+          audioSizeBucket: 'none',
+          payloadPrepared: false,
+          relayAttempted: false,
+          relayAccepted: false,
+          analyzed: false,
+          vocalStatus: 'not_checked',
+          confidenceLevel: null,
+          reasonSafe: 'voice_missing',
+          latencyMs: null,
+        },
       };
     }
     return {
       safe: { recorded: false, quality: 'missing', challenge_id: challengeId },
       sensitive: null,
       error: { kind: 'other', message: err instanceof Error ? err.message : 'Audio capture failed' },
+      diagnostic: {
+        microphonePermission: 'unknown',
+        audioCaptured: false,
+        durationMs: null,
+        audioSizeBucket: 'none',
+        payloadPrepared: false,
+        relayAttempted: false,
+        relayAccepted: false,
+        analyzed: false,
+        vocalStatus: 'not_checked',
+        confidenceLevel: null,
+        reasonSafe: 'voice_missing',
+        latencyMs: null,
+      },
     };
   }
 }

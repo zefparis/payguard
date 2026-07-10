@@ -44,6 +44,7 @@ import type {
   DemoGuardSelfieSignal,
   DemoGuardReactionSignal,
   DemoGuardVoiceSignal,
+  DemoGuardVoiceDiagnostic,
   DemoGuardMotionSignal,
   DemoGuardOrientationSignal,
   DemoGuardTouchSignal,
@@ -155,6 +156,7 @@ export function DemoGuard() {
   // Voice state
   const [voiceChallengeId] = useState(() => generateChallengeId());
   const [voiceRecording, setVoiceRecording] = useState(false);
+  const [voiceDiagnostic, setVoiceDiagnostic] = useState<DemoGuardVoiceDiagnostic | null>(null);
 
   // ── Cognitive battery state ──
   const [cogReflexSignal, setCogReflexSignal] = useState<ReflexSignal | null>(null);
@@ -335,11 +337,13 @@ export function DemoGuard() {
     try {
       const result = await recordVoiceChallenge(4000, voiceChallengeId);
       setVoiceSignal(result.safe);
+      setVoiceDiagnostic(result.diagnostic);
       if (result.sensitive) {
         Object.assign(sensitiveRef.current, result.sensitive);
       }
     } catch (err) {
       setVoiceSignal({ recorded: false, quality: 'missing', challenge_id: voiceChallengeId });
+      setVoiceDiagnostic(null);
       setError(err instanceof Error ? err.message : 'Voice recording failed');
     } finally {
       setVoiceRecording(false);
@@ -349,6 +353,7 @@ export function DemoGuard() {
 
   const handleSkipVoice = useCallback(() => {
     setVoiceSignal({ recorded: false, quality: 'missing', challenge_id: voiceChallengeId });
+    setVoiceDiagnostic(null);
     setPhase('cognitive-intro');
   }, [voiceChallengeId]);
 
@@ -915,6 +920,23 @@ export function DemoGuard() {
               <span>Challenge: {voiceSignal.challenge_id}</span>
             </div>
           )}
+          {voiceDiagnostic && (
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--separator)', fontSize: 12, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>Vocal Diagnostics</span>
+              <span>Microphone: {voiceDiagnostic.microphonePermission === 'granted' ? '✅ Granted' : voiceDiagnostic.microphonePermission === 'denied' ? '❌ Denied' : '⚠️ Unknown'}</span>
+              <span>Audio captured: {voiceDiagnostic.audioCaptured ? '✅' : '❌'}</span>
+              {voiceDiagnostic.durationMs != null && <span>Duration: {voiceDiagnostic.durationMs} ms</span>}
+              <span>Size bucket: {voiceDiagnostic.audioSizeBucket}</span>
+              <span>Payload prepared: {voiceDiagnostic.payloadPrepared ? '✅' : '❌'}</span>
+              <span>Relay attempted: {voiceDiagnostic.relayAttempted ? '✅' : '❌'}</span>
+              {voiceDiagnostic.relayAttempted && <span>Relay accepted: {voiceDiagnostic.relayAccepted ? '✅' : '❌'}</span>}
+              <span>Analyzed: {voiceDiagnostic.analyzed ? '✅' : '❌'}</span>
+              <span>Vocal status: <strong style={{ color: voiceDiagnostic.vocalStatus === 'passed' ? 'var(--green)' : voiceDiagnostic.vocalStatus === 'failed' ? 'var(--red)' : 'var(--secondary-label)' }}>{voiceDiagnostic.vocalStatus}</strong></span>
+              {voiceDiagnostic.confidenceLevel && <span>Confidence: {voiceDiagnostic.confidenceLevel}</span>}
+              {voiceDiagnostic.reasonSafe && <span>Reason: {voiceDiagnostic.reasonSafe}</span>}
+              {voiceDiagnostic.latencyMs != null && <span>Latency: {voiceDiagnostic.latencyMs} ms</span>}
+            </div>
+          )}
         </div>
       )}
 
@@ -1346,6 +1368,19 @@ export function DemoGuard() {
                 {response.hybridFusion.trustLevel && <span>Trust level: {response.hybridFusion.trustLevel}</span>}
                 {response.hybridFusion.cognitiveStatus && <span>Cognitive: {response.hybridFusion.cognitiveStatus}</span>}
                 {response.hybridFusion.vocalStatus && <span>Vocal: {response.hybridFusion.vocalStatus}</span>}
+                {response.hybridFusion.vocalDiagnostic && (
+                  <>
+                    <span style={{ marginTop: 4, fontWeight: 600 }}>Vocal Diagnostic</span>
+                    <span>Microphone: {response.hybridFusion.vocalDiagnostic.microphonePermission}</span>
+                    <span>Audio captured: {response.hybridFusion.vocalDiagnostic.audioCaptured ? '✅' : '❌'}</span>
+                    <span>Payload prepared: {response.hybridFusion.vocalDiagnostic.payloadPrepared ? '✅' : '❌'}</span>
+                    <span>Relay attempted: {response.hybridFusion.vocalDiagnostic.relayAttempted ? '✅' : '❌'}</span>
+                    {response.hybridFusion.vocalDiagnostic.relayAttempted && <span>Relay accepted: {response.hybridFusion.vocalDiagnostic.relayAccepted ? '✅' : '❌'}</span>}
+                    <span>Analyzed: {response.hybridFusion.vocalDiagnostic.analyzed ? '✅' : '❌'}</span>
+                    <span>Reason: {response.hybridFusion.vocalDiagnostic.reasonSafe}</span>
+                    {response.hybridFusion.vocalDiagnostic.latencyMs != null && <span>Latency: {response.hybridFusion.vocalDiagnostic.latencyMs} ms</span>}
+                  </>
+                )}
                 {response.hybridFusion.monitoringStatus != null && (
                   <span>Monitoring: {response.hybridFusion.monitoringStatus === 'recorded' ? '✅ Recorded' : response.hybridFusion.monitoringStatus === 'pending' ? '⏳ Pending' : '❌ Failed'}</span>
                 ) || response.hybridFusion.monitoringRecorded != null && (

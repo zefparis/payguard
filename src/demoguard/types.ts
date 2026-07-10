@@ -66,6 +66,37 @@ export interface DemoGuardVoiceSignal {
   mfcc_available?: boolean;
 }
 
+export type DemoGuardVocalStatus = 'passed' | 'review' | 'failed' | 'not_checked';
+
+export type DemoGuardVocalReasonSafe =
+  | 'voice_checked'
+  | 'voice_checked_limited'
+  | 'voice_missing'
+  | 'voice_low_quality'
+  | 'voice_replay_suspected'
+  | 'hcs_vocal_unavailable'
+  | 'hcs_vocal_auth_failed'
+  | 'hcs_vocal_endpoint_unavailable'
+  | 'audio_missing'
+  | 'not_attempted';
+
+export type DemoGuardAudioSizeBucket = 'none' | 'small' | 'medium' | 'large';
+
+export interface DemoGuardVoiceDiagnostic {
+  microphonePermission: 'granted' | 'denied' | 'prompt' | 'unsupported' | 'unknown';
+  audioCaptured: boolean;
+  durationMs: number | null;
+  audioSizeBucket: DemoGuardAudioSizeBucket;
+  payloadPrepared: boolean;
+  relayAttempted: boolean;
+  relayAccepted: boolean;
+  analyzed: boolean;
+  vocalStatus: DemoGuardVocalStatus;
+  confidenceLevel: 'high' | 'medium' | 'low' | null;
+  reasonSafe: DemoGuardVocalReasonSafe;
+  latencyMs: number | null;
+}
+
 // ─── Device signal metadata ───────────────────────────────────────
 
 export interface DemoGuardMotionSignal {
@@ -173,6 +204,7 @@ export interface DemoGuardHybridFusion {
   vocalStatus?: 'passed' | 'review' | 'failed';
   monitoringRecorded?: boolean;
   monitoringStatus?: 'recorded' | 'pending' | 'failed';
+  vocalDiagnostic?: DemoGuardVoiceDiagnostic;
 }
 
 export interface DemoGuardSafeResponse {
