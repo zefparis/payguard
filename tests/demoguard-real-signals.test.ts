@@ -233,7 +233,7 @@ describe('DG-3: Signal completeness increases with signals', () => {
     expect(score).toBe(0);
   });
 
-  it('~12.5% with selfie only (1/8)', async () => {
+  it('~1/14 with selfie only (1/14 with cognitive)', async () => {
     const { computeSignalCompleteness } = await import('../src/demoguard/quality/signalCompleteness');
     const score = computeSignalCompleteness({
       selfie: { captured: true, quality: 'ok', width: 640, height: 480 },
@@ -245,10 +245,10 @@ describe('DG-3: Signal completeness increases with signals', () => {
       visibility: null,
       network: null,
     });
-    expect(score).toBeCloseTo(1 / 8, 5);
+    expect(score).toBeCloseTo(1 / 14, 5);
   });
 
-  it('~25% with selfie + reaction (2/8)', async () => {
+  it('~2/14 with selfie + reaction (2/14 with cognitive)', async () => {
     const { computeSignalCompleteness } = await import('../src/demoguard/quality/signalCompleteness');
     const score = computeSignalCompleteness({
       selfie: { captured: true, quality: 'ok', width: 640, height: 480 },
@@ -260,10 +260,10 @@ describe('DG-3: Signal completeness increases with signals', () => {
       visibility: null,
       network: null,
     });
-    expect(score).toBeCloseTo(2 / 8, 5);
+    expect(score).toBeCloseTo(2 / 14, 5);
   });
 
-  it('100% with selfie + reaction + voice + all device signals', async () => {
+  it('100% with all signals + cognitive', async () => {
     const { computeSignalCompleteness } = await import('../src/demoguard/quality/signalCompleteness');
     const score = computeSignalCompleteness({
       selfie: { captured: true, quality: 'ok', width: 640, height: 480 },
@@ -274,6 +274,15 @@ describe('DG-3: Signal completeness increases with signals', () => {
       touch: { touch_count: 5, pointer_type: 'touch', pressure_supported: true, pressure_avg: 0.5, touch_duration_ms: 200, move_distance: 100, multi_touch_detected: false, quality: 'ok' },
       visibility: { blur_count: 0, focus_count: 1, visibility_hidden_count: 0, hidden_duration_ms: 0, page_focus_lost: false, quality: 'ok' },
       network: { online: true, effective_type: '4g', rtt: 50, downlink: 10, quality: 'ok' },
+      cognitive: {
+        reflex: { rounds: 5, avg_ms: 300, median_ms: 290, variance_ms: 100, min_ms: 200, max_ms: 400, too_fast_count: 0, too_slow_count: 0, regularity_score: 0.5, quality: 'ok' },
+        stroop: { trials: 6, conflict_trials: 3, accuracy: 0.83, avg_response_ms: 600, conflict_cost_ms: 80, error_count: 1, quality: 'ok' },
+        digit_span: { trials: 3, max_span: 7, accuracy: 0.67, positional_errors: 1, quality: 'ok' },
+        n_back: { trials: 8, targets: 2, hits: 2, false_positives: 0, misses: 0, accuracy: 1, avg_response_ms: 500, quality: 'ok' },
+        trail_tap: { nodes: 5, completion_ms: 3000, wrong_taps: 0, hesitation_count: 0, path_efficiency: 0.9, quality: 'ok' },
+        vocal_ran: { items_count: 5, duration_ms: 3000, challenge_id: 'dg_vran_TEST', expected_hash: 'abc12345', audio_present: true, quality: 'ok' },
+        summary: { completed_modules: 6, total_modules: 6, depth_score: 1, consistency_score: 0.9, anomaly_score: 0.1, human_likelihood: 'high', quality: 'ok' },
+      },
     });
     expect(score).toBe(1);
   });
