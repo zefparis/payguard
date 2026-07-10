@@ -193,6 +193,8 @@ export interface DemoGuardSensitive {
   mfcc_summary?: number[];
 }
 
+export const VOICE_KEY = 'voice_b64' as const;
+
 // ─── Safe diagnostics contracts (P10-FINAL) ───────────────────────
 
 export interface VoiceDiagnosticsSafe {

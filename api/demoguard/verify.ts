@@ -223,6 +223,20 @@ export default async function demoguardVerifyHandler(
     sessionPublicId: sessionId,
   });
 
+  // ── Safe log: behavior signal presence (P10-FINAL) ──
+  const behaviorData = voiceSignal?.behavior as Record<string, unknown> | undefined;
+  const behaviorSummary = behaviorData?.summary as Record<string, unknown> | undefined;
+  const touchDiagBehavior = voiceSignal?.touchDiagnosticsBehavior as Record<string, unknown> | undefined;
+  safeLog('info', {
+    event: 'demoguard_behavior_signal',
+    behaviorPresent: !!behaviorData,
+    behaviorTasksObserved: behaviorSummary?.tasksObserved ?? 0,
+    behaviorTotalInteractions: behaviorSummary?.totalInteractions ?? 0,
+    touchDiagBehaviorPresent: !!touchDiagBehavior,
+    touchDiagStatus: touchDiagBehavior?.status ?? 'missing',
+    sessionPublicId: sessionId,
+  });
+
   // ── API key (server-side only) ──
   const apiKey = process.env.HV_API_KEY;
   if (!apiKey) {

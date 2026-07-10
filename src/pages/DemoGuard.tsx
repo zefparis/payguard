@@ -28,6 +28,7 @@ import { collectPermissions } from '../demoguard/collectors/permissionCollector'
 import { computeQuality } from '../demoguard/quality/signalCompleteness';
 import { submitDemoGuard, DemoGuardApiError } from '../demoguard/api';
 import { DEMOGUARD_VERSION, DEMOGUARD_SOURCE } from '../demoguard/constants';
+import { VOICE_KEY } from '../demoguard/types';
 import { requestCamera, stopCamera, captureSelfieFromVideo } from '../demoguard/collectors/cameraCollector';
 import { evaluateRound, computeReactionResult, getRandomDelayMs, REACTION_ROUNDS } from '../demoguard/collectors/reactionCollector';
 import { recordVoiceChallenge, generateChallengeId, generateChallengePhrase } from '../demoguard/collectors/audioCollector';
@@ -122,8 +123,6 @@ import {
   recordVocalRanInteraction,
 } from '../demoguard/behavior/taskBehaviorRecorder';
 import type { BehaviorSummary, TouchDiagnosticsBehaviorSafe } from '../demoguard/behavior/behaviorTypes';
-
-const VOICE_KEY = 'voice_b64' as const;
 
 function buildVoiceDiagnosticsSafe(
   voiceSignal: DemoGuardVoiceSignal | null,
@@ -1519,8 +1518,12 @@ export function DemoGuard() {
           <div className="dg-row"><span className="dg-row-label">Tasks observed</span><span className="dg-row-value">{behaviorSummary.tasksObserved} / 6</span></div>
           <div className="dg-row"><span className="dg-row-label">Interactions</span><span className="dg-row-value">{behaviorSummary.totalInteractions}</span></div>
           <div className="dg-row"><span className="dg-row-label">Motor consistency</span><span className="dg-row-value">{(behaviorSummary.consistencyScore * 100).toFixed(0)}%</span></div>
+          <div className="dg-row"><span className="dg-row-label">Motor confidence</span><span className="dg-row-value">{(behaviorSummary.motorConfidence * 100).toFixed(0)}%</span></div>
           <div className="dg-row"><span className="dg-row-label">Hesitation</span><span className="dg-row-value">{behaviorSummary.hesitationTotal <= 2 ? 'low' : behaviorSummary.hesitationTotal <= 5 ? 'medium' : 'high'}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Avg rhythm</span><span className="dg-row-value">{behaviorSummary.avgRhythmMs != null ? `${behaviorSummary.avgRhythmMs} ms` : '—'}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Corrections</span><span className="dg-row-value">{behaviorSummary.correctionTotal}</span></div>
           <div className="dg-row"><span className="dg-row-label">Behavior likelihood</span><span className={`dg-badge ${behaviorSummary.behaviorLikelihood === 'high' ? 'dg-badge-ok' : behaviorSummary.behaviorLikelihood === 'medium' ? 'dg-badge-review' : 'dg-badge-failed'}`}>{behaviorSummary.behaviorLikelihood}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Payload ready</span><span className={`dg-badge ${behaviorSummary.totalInteractions > 0 ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{behaviorSummary.totalInteractions > 0 ? 'YES' : 'NO'}</span></div>
         </div>
       )}
 
