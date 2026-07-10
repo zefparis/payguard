@@ -5,11 +5,12 @@
  * 1. Enter hcs_session_public_id
  * 2. Start DemoGuard check (device + permissions)
  * 3. Camera capture (selfie)
- * 4. Reaction test
+ * 4. Reaction test (reflex multi-round)
  * 5. Voice challenge
- * 6. Signal completeness
- * 7. Submit DemoGuard
- * 8. Display safe response
+ * 6. Cognitive battery (Stroop, Digit Span, N-Back, Trail Tap, Vocal RAN)
+ * 7. Signal completeness + Cognitive proof summary
+ * 8. Submit DemoGuard
+ * 9. Display safe response
  *
  * Feature-gated by VITE_DEMOGUARD_ENABLED.
  * No PII, no API keys.
@@ -52,8 +53,59 @@ import type {
   DemoGuardSafeResponse,
   DemoGuardSensitive,
 } from '../demoguard/types';
+import type {
+  CognitiveSignals,
+  ReflexSignal,
+  StroopSignal,
+  DigitSpanSignal,
+  NBackSignal,
+  TrailTapSignal,
+  VocalRanSignal,
+  CognitiveSummary,
+} from '../demoguard/cognitive/cognitiveTypes';
+import {
+  REFLEX_ROUNDS as COG_REFLEX_ROUNDS,
+  evaluateReflexRound,
+  computeReflexResult,
+  getRandomReflexDelay,
+  type ReflexRoundResult,
+} from '../demoguard/cognitive/reflexChallenge';
+import {
+  generateStroopTrials,
+  computeStroopResult,
+  STROOP_COLORS,
+  type StroopColor,
+  type StroopTrialConfig,
+  type StroopTrialResult,
+} from '../demoguard/cognitive/stroopChallenge';
+import {
+  generateDigitSpanTrials,
+  evaluateDigitSpanTrial,
+  computeDigitSpanResult,
+  type DigitSpanTrialConfig,
+  type DigitSpanTrialResult,
+} from '../demoguard/cognitive/digitSpanChallenge';
+import {
+  generateNBackTrials,
+  evaluateNBackTrial,
+  computeNBackResult,
+  type NBackTrialConfig,
+  type NBackTrialResult,
+} from '../demoguard/cognitive/nBackChallenge';
+import {
+  generateTrailTapNodes,
+  computeTrailTapResult,
+  type TrailTapNode,
+  type TrailTapEvent,
+} from '../demoguard/cognitive/trailTapChallenge';
+import {
+  generateVocalRanChallenge,
+  computeVocalRanResult,
+  type VocalRanChallenge,
+} from '../demoguard/cognitive/vocalRanChallenge';
+import { computeCognitiveSummary } from '../demoguard/cognitive/cognitiveScoring';
 
-type Phase = 'idle' | 'device' | 'permissions' | 'camera' | 'reaction' | 'voice' | 'device-signals' | 'readiness' | 'submitting' | 'done' | 'error';
+type Phase = 'idle' | 'device' | 'permissions' | 'camera' | 'reaction' | 'voice' | 'cognitive-intro' | 'cognitive-stroop' | 'cognitive-digit-span' | 'cognitive-nback' | 'cognitive-trail-tap' | 'cognitive-vocal-ran' | 'cognitive-summary' | 'device-signals' | 'readiness' | 'submitting' | 'done' | 'error';
 
 type ReactionPhase = 'ready' | 'wait' | 'go' | 'too_early' | 'done';
 
@@ -93,6 +145,52 @@ export function DemoGuard() {
   // Voice state
   const [voiceChallengeId] = useState(() => generateChallengeId());
   const [voiceRecording, setVoiceRecording] = useState(false);
+
+  // ── Cognitive battery state ──
+  const [cogReflexSignal, setCogReflexSignal] = useState<ReflexSignal | null>(null);
+  const [cogStroopSignal, setCogStroopSignal] = useState<StroopSignal | null>(null);
+  const [cogDigitSpanSignal, setCogDigitSpanSignal] = useState<DigitSpanSignal | null>(null);
+  const [cogNBackSignal, setCogNBackSignal] = useState<NBackSignal | null>(null);
+  const [cogTrailTapSignal, setCogTrailTapSignal] = useState<TrailTapSignal | null>(null);
+  const [cogVocalRanSignal, setCogVocalRanSignal] = useState<VocalRanSignal | null>(null);
+  const [cogSummary, setCogSummary] = useState<CognitiveSummary | null>(null);
+
+  // Cognitive reflex state
+  const [cogReflexPhase, setCogReflexPhase] = useState<ReactionPhase>('ready');
+  const [cogReflexRound, setCogReflexRound] = useState(0);
+  const [cogReflexResults, setCogReflexResults] = useState<ReflexRoundResult[]>([]);
+  const [cogLastReflexMs, setCogLastReflexMs] = useState<number | null>(null);
+  const cogGoAtRef = useRef<number>(0);
+  const cogReflexTimerRef = useRef<number | null>(null);
+
+  // Cognitive Stroop state
+  const [stroopTrials, setStroopTrials] = useState<StroopTrialConfig[]>([]);
+  const [stroopIndex, setStroopIndex] = useState(0);
+  const [stroopResults, setStroopResults] = useState<StroopTrialResult[]>([]);
+  const stroopStartRef = useRef<number>(0);
+
+  // Cognitive Digit Span state
+  const [digitSpanTrials, setDigitSpanTrials] = useState<DigitSpanTrialConfig[]>([]);
+  const [digitSpanIndex, setDigitSpanIndex] = useState(0);
+  const [digitSpanInput, setDigitSpanInput] = useState('');
+  const [digitSpanResults, setDigitSpanResults] = useState<DigitSpanTrialResult[]>([]);
+  const [digitSpanShowDigits, setDigitSpanShowDigits] = useState(true);
+
+  // Cognitive N-Back state
+  const [nbackTrials, setNbackTrials] = useState<NBackTrialConfig[]>([]);
+  const [nbackIndex, setNbackIndex] = useState(0);
+  const [nbackResults, setNbackResults] = useState<NBackTrialResult[]>([]);
+  const nbackStartRef = useRef<number>(0);
+
+  // Cognitive Trail Tap state
+  const [trailNodes, setTrailNodes] = useState<TrailTapNode[]>([]);
+  const [trailEvents, setTrailEvents] = useState<TrailTapEvent[]>([]);
+  const trailStartRef = useRef<number>(0);
+
+  // Cognitive Vocal RAN state
+  const [vocalRanChallenge, setVocalRanChallenge] = useState<VocalRanChallenge | null>(null);
+  const [vocalRanRecording, setVocalRanRecording] = useState(false);
+  const vocalRanStartRef = useRef<number>(0);
 
   // ── Device + permissions ──
   const handleStart = useCallback(async () => {
@@ -235,14 +333,257 @@ export function DemoGuard() {
       setError(err instanceof Error ? err.message : 'Voice recording failed');
     } finally {
       setVoiceRecording(false);
-      setPhase('device-signals');
+      setPhase('cognitive-intro');
     }
   }, [voiceChallengeId]);
 
   const handleSkipVoice = useCallback(() => {
     setVoiceSignal({ recorded: false, quality: 'missing', challenge_id: voiceChallengeId });
-    setPhase('device-signals');
+    setPhase('cognitive-intro');
   }, [voiceChallengeId]);
+
+  // ── Cognitive Reflex ──
+  useEffect(() => {
+    if (phase !== 'cognitive-intro' || cogReflexPhase !== 'wait') return;
+    const delay = getRandomReflexDelay();
+    cogReflexTimerRef.current = window.setTimeout(() => {
+      cogGoAtRef.current = performance.now();
+      setCogReflexPhase('go');
+    }, delay);
+    return () => { if (cogReflexTimerRef.current) window.clearTimeout(cogReflexTimerRef.current); };
+  }, [phase, cogReflexPhase]);
+
+  useEffect(() => {
+    if (cogReflexPhase !== 'too_early') return;
+    const t = window.setTimeout(() => setCogReflexPhase('ready'), 1200);
+    return () => window.clearTimeout(t);
+  }, [cogReflexPhase]);
+
+  const handleCogReflexTap = useCallback(() => {
+    if (phase !== 'cognitive-intro') return;
+    if (cogReflexPhase === 'ready') {
+      setCogLastReflexMs(null);
+      setCogReflexPhase('wait');
+      return;
+    }
+    if (cogReflexPhase === 'wait') {
+      if (cogReflexTimerRef.current) window.clearTimeout(cogReflexTimerRef.current);
+      setCogReflexPhase('too_early');
+      return;
+    }
+    if (cogReflexPhase === 'go') {
+      const ms = performance.now() - cogGoAtRef.current;
+      const round = evaluateReflexRound(ms);
+      setCogLastReflexMs(round.ms);
+      const next = [...cogReflexResults, round];
+      setCogReflexResults(next);
+      if (next.length >= COG_REFLEX_ROUNDS) {
+        const result = computeReflexResult(next);
+        setCogReflexSignal(result);
+        setCogReflexPhase('done');
+        setPhase('cognitive-stroop');
+        setStroopTrials(generateStroopTrials(6));
+        setStroopIndex(0);
+        setStroopResults([]);
+      } else {
+        setCogReflexRound((r) => r + 1);
+        setCogReflexPhase('ready');
+      }
+    }
+  }, [phase, cogReflexPhase, cogReflexResults]);
+
+  const handleSkipCogReflex = useCallback(() => {
+    setCogReflexSignal(null);
+    setPhase('cognitive-stroop');
+    setStroopTrials(generateStroopTrials(6));
+    setStroopIndex(0);
+    setStroopResults([]);
+  }, []);
+
+  // ── Cognitive Stroop ──
+  const handleStroopSelect = useCallback((color: StroopColor) => {
+    if (phase !== 'cognitive-stroop' || stroopIndex >= stroopTrials.length) return;
+    const rt = performance.now() - stroopStartRef.current;
+    const trial = stroopTrials[stroopIndex];
+    const result: StroopTrialResult = {
+      config: trial,
+      selected: color,
+      correct: color === trial.displayColor,
+      response_ms: Math.round(rt),
+    };
+    const next = [...stroopResults, result];
+    setStroopResults(next);
+    if (next.length >= stroopTrials.length) {
+      const sig = computeStroopResult(next);
+      setCogStroopSignal(sig);
+      setPhase('cognitive-digit-span');
+      setDigitSpanTrials(generateDigitSpanTrials(3));
+      setDigitSpanIndex(0);
+      setDigitSpanInput('');
+      setDigitSpanResults([]);
+      setDigitSpanShowDigits(true);
+    } else {
+      setStroopIndex((i) => i + 1);
+      stroopStartRef.current = performance.now();
+    }
+  }, [phase, stroopIndex, stroopTrials, stroopResults]);
+
+  const handleSkipStroop = useCallback(() => {
+    setCogStroopSignal(null);
+    setPhase('cognitive-digit-span');
+    setDigitSpanTrials(generateDigitSpanTrials(3));
+    setDigitSpanIndex(0);
+    setDigitSpanInput('');
+    setDigitSpanResults([]);
+    setDigitSpanShowDigits(true);
+  }, []);
+
+  // ── Cognitive Digit Span ──
+  useEffect(() => {
+    if (phase === 'cognitive-digit-span' && digitSpanShowDigits) {
+      const t = window.setTimeout(() => setDigitSpanShowDigits(false), 3000);
+      return () => window.clearTimeout(t);
+    }
+  }, [phase, digitSpanShowDigits, digitSpanIndex]);
+
+  const handleDigitSpanSubmit = useCallback(() => {
+    if (phase !== 'cognitive-digit-span' || digitSpanIndex >= digitSpanTrials.length) return;
+    const trial = digitSpanTrials[digitSpanIndex];
+    const input = digitSpanInput.split('').map(Number).filter((n) => !isNaN(n));
+    const result = evaluateDigitSpanTrial(trial, input);
+    const next = [...digitSpanResults, result];
+    setDigitSpanResults(next);
+    if (next.length >= digitSpanTrials.length) {
+      const sig = computeDigitSpanResult(next);
+      setCogDigitSpanSignal(sig);
+      setPhase('cognitive-nback');
+      setNbackTrials(generateNBackTrials(8));
+      setNbackIndex(0);
+      setNbackResults([]);
+    } else {
+      setDigitSpanIndex((i) => i + 1);
+      setDigitSpanInput('');
+      setDigitSpanShowDigits(true);
+    }
+  }, [phase, digitSpanIndex, digitSpanTrials, digitSpanInput, digitSpanResults]);
+
+  const handleSkipDigitSpan = useCallback(() => {
+    setCogDigitSpanSignal(null);
+    setPhase('cognitive-nback');
+    setNbackTrials(generateNBackTrials(8));
+    setNbackIndex(0);
+    setNbackResults([]);
+  }, []);
+
+  // ── Cognitive N-Back ──
+  const handleNBackResponse = useCallback((saidMatch: boolean) => {
+    if (phase !== 'cognitive-nback' || nbackIndex >= nbackTrials.length) return;
+    const rt = performance.now() - nbackStartRef.current;
+    const trial = nbackTrials[nbackIndex];
+    const result = evaluateNBackTrial(trial, saidMatch, rt);
+    const next = [...nbackResults, result];
+    setNbackResults(next);
+    if (next.length >= nbackTrials.length) {
+      const sig = computeNBackResult(next);
+      setCogNBackSignal(sig);
+      const nodes = generateTrailTapNodes(5);
+      setTrailNodes(nodes);
+      setTrailEvents([]);
+      setPhase('cognitive-trail-tap');
+      trailStartRef.current = 0;
+    } else {
+      setNbackIndex((i) => i + 1);
+      nbackStartRef.current = performance.now();
+    }
+  }, [phase, nbackIndex, nbackTrials, nbackResults]);
+
+  const handleSkipNBack = useCallback(() => {
+    setCogNBackSignal(null);
+    const nodes = generateTrailTapNodes(5);
+    setTrailNodes(nodes);
+    setTrailEvents([]);
+    setPhase('cognitive-trail-tap');
+  }, []);
+
+  // ── Cognitive Trail Tap ──
+  const handleTrailTap = useCallback((nodeId: number) => {
+    if (phase !== 'cognitive-trail-tap') return;
+    const now = performance.now();
+    if (trailStartRef.current === 0) {
+      trailStartRef.current = now;
+    }
+    const expectedId = trailEvents.filter((e) => e.correct).length + 1;
+    const correct = nodeId === expectedId;
+    const event: TrailTapEvent = { nodeId, timestamp: now - (trailStartRef.current || now), correct };
+    const next = [...trailEvents, event];
+    setTrailEvents(next);
+    if (correct && expectedId === trailNodes.length) {
+      const completionMs = now - trailStartRef.current;
+      const sig = computeTrailTapResult(trailNodes, next, completionMs);
+      setCogTrailTapSignal(sig);
+      const challenge = generateVocalRanChallenge(5);
+      setVocalRanChallenge(challenge);
+      setPhase('cognitive-vocal-ran');
+    }
+  }, [phase, trailEvents, trailNodes]);
+
+  const handleSkipTrailTap = useCallback(() => {
+    setCogTrailTapSignal(null);
+    const challenge = generateVocalRanChallenge(5);
+    setVocalRanChallenge(challenge);
+    setPhase('cognitive-vocal-ran');
+  }, []);
+
+  // ── Cognitive Vocal RAN ──
+  const handleVocalRanRecord = useCallback(async () => {
+    if (!vocalRanChallenge) return;
+    setVocalRanRecording(true);
+    vocalRanStartRef.current = performance.now();
+    try {
+      const result = await recordVoiceChallenge(5000, vocalRanChallenge.challenge_id);
+      const durationMs = performance.now() - vocalRanStartRef.current;
+      const sig = computeVocalRanResult(vocalRanChallenge, durationMs, result.safe.recorded);
+      setCogVocalRanSignal(sig);
+      if (result.sensitive) {
+        Object.assign(sensitiveRef.current, result.sensitive);
+      }
+    } catch {
+      const durationMs = performance.now() - vocalRanStartRef.current;
+      const sig = computeVocalRanResult(vocalRanChallenge, durationMs, false);
+      setCogVocalRanSignal(sig);
+    } finally {
+      setVocalRanRecording(false);
+      finishCognitiveBattery();
+    }
+  }, [vocalRanChallenge]);
+
+  const handleSkipVocalRan = useCallback(() => {
+    if (vocalRanChallenge) {
+      const sig = computeVocalRanResult(vocalRanChallenge, 0, false);
+      setCogVocalRanSignal(sig);
+    }
+    finishCognitiveBattery();
+  }, [vocalRanChallenge]);
+
+  const finishCognitiveBattery = useCallback(() => {
+    const cogSignals: CognitiveSignals = {
+      reflex: cogReflexSignal,
+      stroop: cogStroopSignal,
+      digit_span: cogDigitSpanSignal,
+      n_back: cogNBackSignal,
+      trail_tap: cogTrailTapSignal,
+      vocal_ran: cogVocalRanSignal,
+      summary: null,
+    };
+    const summary = computeCognitiveSummary(cogSignals);
+    cogSignals.summary = summary;
+    setCogSummary(summary);
+    setPhase('cognitive-summary');
+  }, [cogReflexSignal, cogStroopSignal, cogDigitSpanSignal, cogNBackSignal, cogTrailTapSignal, cogVocalRanSignal]);
+
+  const handleCognitiveContinue = useCallback(() => {
+    setPhase('device-signals');
+  }, []);
 
   // ── Device signals collection ──
   useEffect(() => {
@@ -286,6 +627,15 @@ export function DemoGuard() {
   // ── Readiness ──
   useEffect(() => {
     if (phase !== 'readiness' || !device || !permissions) return;
+    const cogSignals: CognitiveSignals | null = cogSummary ? {
+      reflex: cogReflexSignal,
+      stroop: cogStroopSignal,
+      digit_span: cogDigitSpanSignal,
+      n_back: cogNBackSignal,
+      trail_tap: cogTrailTapSignal,
+      vocal_ran: cogVocalRanSignal,
+      summary: cogSummary,
+    } : null;
     const signals: DemoGuardSignals = {
       selfie: selfieSignal,
       reaction: reactionSignal,
@@ -295,10 +645,11 @@ export function DemoGuard() {
       touch: touchSignal,
       visibility: visibilitySignal,
       network: networkSignal,
+      cognitive: cogSignals,
     };
     const q = computeQuality(signals, device, permissions);
     setQuality(q);
-  }, [phase, device, permissions, selfieSignal, reactionSignal, voiceSignal, motionSignal, orientationSignal, touchSignal, visibilitySignal, networkSignal]);
+  }, [phase, device, permissions, selfieSignal, reactionSignal, voiceSignal, motionSignal, orientationSignal, touchSignal, visibilitySignal, networkSignal, cogSummary, cogReflexSignal, cogStroopSignal, cogDigitSpanSignal, cogNBackSignal, cogTrailTapSignal, cogVocalRanSignal]);
 
   // ── Submit ──
   const handleSubmit = useCallback(async () => {
@@ -314,6 +665,15 @@ export function DemoGuard() {
     setPhase('submitting');
     setError(null);
 
+    const cogSignals: CognitiveSignals | null = cogSummary ? {
+      reflex: cogReflexSignal,
+      stroop: cogStroopSignal,
+      digit_span: cogDigitSpanSignal,
+      n_back: cogNBackSignal,
+      trail_tap: cogTrailTapSignal,
+      vocal_ran: cogVocalRanSignal,
+      summary: cogSummary,
+    } : null;
     const signals: DemoGuardSignals = {
       selfie: selfieSignal,
       reaction: reactionSignal,
@@ -323,6 +683,7 @@ export function DemoGuard() {
       touch: touchSignal,
       visibility: visibilitySignal,
       network: networkSignal,
+      cognitive: cogSignals,
     };
     const q = quality ?? computeQuality(signals, device, permissions);
 
@@ -352,7 +713,7 @@ export function DemoGuard() {
         setError(err instanceof Error ? err.message : 'Submit failed');
       }
     }
-  }, [sessionPublicId, device, permissions, quality, selfieSignal, reactionSignal, voiceSignal, motionSignal, orientationSignal, touchSignal, visibilitySignal, networkSignal]);
+  }, [sessionPublicId, device, permissions, quality, selfieSignal, reactionSignal, voiceSignal, motionSignal, orientationSignal, touchSignal, visibilitySignal, networkSignal, cogSummary, cogReflexSignal, cogStroopSignal, cogDigitSpanSignal, cogNBackSignal, cogTrailTapSignal, cogVocalRanSignal]);
 
   // ── Cleanup camera on unmount ──
   useEffect(() => {
@@ -547,6 +908,291 @@ export function DemoGuard() {
         </div>
       )}
 
+      {/* ═══ Cognitive Battery ═══ */}
+
+      {/* Cognitive Reflex (phase: cognitive-intro) */}
+      {phase === 'cognitive-intro' && (
+        <div style={{ textAlign: 'center', padding: 24 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cognitive Battery — Reflex</h3>
+          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 8 }}>
+            Tour {cogReflexRound + 1} sur {COG_REFLEX_ROUNDS}
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
+            {Array.from({ length: COG_REFLEX_ROUNDS }).map((_, i) => (
+              <div key={i} style={{
+                width: 10, height: 10, borderRadius: 5,
+                background: i < cogReflexResults.length ? 'var(--green)' : i === cogReflexRound ? 'var(--blue)' : 'var(--separator)',
+              }} />
+            ))}
+          </div>
+          <button
+            onClick={handleCogReflexTap}
+            style={{
+              width: '100%', height: 180, borderRadius: 20, border: 'none',
+              background: cogReflexPhase === 'go' ? '#34c759' : cogReflexPhase === 'wait' ? '#b91c1c' : cogReflexPhase === 'too_early' ? '#ff9f0a' : '#2563eb',
+              color: '#ffffff', fontSize: 24, fontWeight: 800, cursor: 'pointer', touchAction: 'manipulation',
+            }}
+          >
+            {cogReflexPhase === 'ready' ? 'DÉMARRER' : cogReflexPhase === 'wait' ? 'ATTENDEZ' : cogReflexPhase === 'go' ? 'APPUYEZ' : cogReflexPhase === 'too_early' ? 'TROP TÔT' : 'Terminé'}
+          </button>
+          {cogLastReflexMs !== null && cogReflexPhase === 'ready' && (
+            <p style={{ marginTop: 12, fontSize: 14, color: 'var(--green)' }}>Dernier : {cogLastReflexMs} ms</p>
+          )}
+          <div style={{ marginTop: 16 }}>
+            <Button onClick={handleSkipCogReflex} variant="secondary">Skip Reflex</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Cognitive Stroop */}
+      {phase === 'cognitive-stroop' && stroopTrials.length > 0 && stroopIndex < stroopTrials.length && (
+        <div style={{ textAlign: 'center', padding: 24 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cognitive Battery — Stroop</h3>
+          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 16 }}>
+            Trial {stroopIndex + 1} / {stroopTrials.length} — Sélectionnez la COULEUR affichée
+          </p>
+          <div style={{
+            fontSize: 48, fontWeight: 900, marginBottom: 24,
+            color: stroopTrials[stroopIndex].displayColor === 'red' ? '#ef4444' : stroopTrials[stroopIndex].displayColor === 'blue' ? '#3b82f6' : stroopTrials[stroopIndex].displayColor === 'green' ? '#22c55e' : '#eab308',
+          }}>
+            {stroopTrials[stroopIndex].word.toUpperCase()}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+            {STROOP_COLORS.map((color) => (
+              <button
+                key={color}
+                onClick={() => handleStroopSelect(color)}
+                style={{
+                  width: 72, height: 72, borderRadius: 12, border: 'none',
+                  background: color === 'red' ? '#ef4444' : color === 'blue' ? '#3b82f6' : color === 'green' ? '#22c55e' : '#eab308',
+                  color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', touchAction: 'manipulation',
+                }}
+              >
+                {color}
+              </button>
+            ))}
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <Button onClick={handleSkipStroop} variant="secondary">Skip Stroop</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Cognitive Digit Span */}
+      {phase === 'cognitive-digit-span' && digitSpanTrials.length > 0 && digitSpanIndex < digitSpanTrials.length && (
+        <div style={{ textAlign: 'center', padding: 24 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cognitive Battery — Digit Span</h3>
+          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 16 }}>
+            Trial {digitSpanIndex + 1} / {digitSpanTrials.length} — {digitSpanTrials[digitSpanIndex].span} digits
+          </p>
+          {digitSpanShowDigits ? (
+            <div style={{ fontSize: 40, fontWeight: 800, letterSpacing: 8, marginBottom: 24 }}>
+              {digitSpanTrials[digitSpanIndex].sequence.join(' ')}
+            </div>
+          ) : (
+            <>
+              <p style={{ marginBottom: 16, fontSize: 14 }}>Retapez la séquence :</p>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={digitSpanInput}
+                onChange={(e) => setDigitSpanInput(e.target.value.replace(/\D/g, ''))}
+                style={{
+                  width: '100%', height: 48, borderRadius: 10, fontSize: 24, textAlign: 'center',
+                  border: '1px solid var(--separator)', padding: '0 12px', marginBottom: 16,
+                  background: 'var(--background)', color: 'var(--label)', letterSpacing: 4,
+                }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button onClick={handleDigitSpanSubmit} disabled={!digitSpanInput}>Submit</Button>
+                <Button onClick={handleSkipDigitSpan} variant="secondary">Skip</Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Cognitive N-Back */}
+      {phase === 'cognitive-nback' && nbackTrials.length > 0 && nbackIndex < nbackTrials.length && (
+        <div style={{ textAlign: 'center', padding: 24 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cognitive Battery — N-Back (1-back)</h3>
+          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 16 }}>
+            Trial {nbackIndex + 1} / {nbackTrials.length} — Identique au précédent ?
+          </p>
+          <div style={{ fontSize: 64, fontWeight: 900, marginBottom: 24 }}>
+            {nbackTrials[nbackIndex].letter}
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+            <button
+              onClick={() => handleNBackResponse(true)}
+              style={{
+                width: 120, height: 64, borderRadius: 12, border: 'none',
+                background: '#22c55e', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', touchAction: 'manipulation',
+              }}
+            >OUI (Match)</button>
+            <button
+              onClick={() => handleNBackResponse(false)}
+              style={{
+                width: 120, height: 64, borderRadius: 12, border: 'none',
+                background: '#6b7280', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer', touchAction: 'manipulation',
+              }}
+            >NON</button>
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <Button onClick={handleSkipNBack} variant="secondary">Skip N-Back</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Cognitive Trail Tap */}
+      {phase === 'cognitive-trail-tap' && trailNodes.length > 0 && (
+        <div style={{ textAlign: 'center', padding: 24 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cognitive Battery — Trail Tap</h3>
+          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 16 }}>
+            Tapez les points dans l'ordre 1 → {trailNodes.length}
+          </p>
+          <div style={{ position: 'relative', width: 300, height: 400, margin: '0 auto', border: '1px solid var(--separator)', borderRadius: 12, background: 'var(--background)' }}>
+            {trailNodes.map((node) => (
+              <button
+                key={node.id}
+                onClick={() => handleTrailTap(node.id)}
+                style={{
+                  position: 'absolute',
+                  left: node.x, top: node.y,
+                  width: 44, height: 44, borderRadius: 22, border: '2px solid var(--blue)',
+                  background: 'var(--background)', color: 'var(--label)',
+                  fontSize: 18, fontWeight: 700, cursor: 'pointer', touchAction: 'manipulation',
+                }}
+              >
+                {node.id}
+              </button>
+            ))}
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <Button onClick={handleSkipTrailTap} variant="secondary">Skip Trail Tap</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Cognitive Vocal RAN */}
+      {phase === 'cognitive-vocal-ran' && vocalRanChallenge && (
+        <div style={{ textAlign: 'center', padding: 24 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cognitive Battery — Vocal RAN</h3>
+          <p style={{ color: 'var(--secondary-label)', fontSize: 14, marginBottom: 16 }}>
+            Lisez les chiffres suivants à voix haute, dans l'ordre :
+          </p>
+          <div style={{ fontSize: 36, fontWeight: 800, letterSpacing: 12, marginBottom: 24 }}>
+            {vocalRanChallenge.sequence.join(' ')}
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+            <Button onClick={handleVocalRanRecord} disabled={vocalRanRecording}>
+              {vocalRanRecording ? 'Recording...' : 'Record'}
+            </Button>
+            <Button onClick={handleSkipVocalRan} variant="secondary" disabled={vocalRanRecording}>Skip</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Cognitive Summary */}
+      {phase === 'cognitive-summary' && cogSummary && (
+        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 16 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Cognitive Proof Summary</h3>
+          <div style={{ fontSize: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--secondary-label)' }}>Modules completed:</span>
+              <span style={{ fontWeight: 600 }}>{cogSummary.completed_modules} / {cogSummary.total_modules}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--secondary-label)' }}>Cognitive depth:</span>
+              <span style={{ fontWeight: 600, color: cogSummary.depth_score >= 0.65 ? 'var(--green)' : '#eab308' }}>
+                {(cogSummary.depth_score * 100).toFixed(0)}%
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--secondary-label)' }}>Consistency:</span>
+              <span style={{ fontWeight: 600 }}>{(cogSummary.consistency_score * 100).toFixed(0)}%</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--secondary-label)' }}>Anomaly:</span>
+              <span style={{ fontWeight: 600, color: cogSummary.anomaly_score < 0.3 ? 'var(--green)' : cogSummary.anomaly_score < 0.5 ? '#eab308' : '#ef4444' }}>
+                {cogSummary.anomaly_score < 0.3 ? 'low' : cogSummary.anomaly_score < 0.5 ? 'medium' : 'high'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--secondary-label)' }}>Human likelihood:</span>
+              <span style={{ fontWeight: 600, color: cogSummary.human_likelihood === 'high' ? 'var(--green)' : cogSummary.human_likelihood === 'medium' ? '#eab308' : '#ef4444' }}>
+                {cogSummary.human_likelihood}
+              </span>
+            </div>
+            {cogSummary.depth_score < 0.65 && (
+              <div style={{ marginTop: 8, padding: 8, borderRadius: 8, background: 'rgba(234, 179, 8, 0.1)', fontSize: 13, color: '#eab308' }}>
+                ⚠️ Cognitive depth is low ({(cogSummary.depth_score * 100).toFixed(0)}% below 65%). Submit with caution.
+              </div>
+            )}
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <Button onClick={handleCognitiveContinue}>Continue to device signals</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Cognitive module results (shown after battery) */}
+      {cogReflexSignal && phase !== 'cognitive-intro' && (
+        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Reflex: {cogReflexSignal.quality === 'ok' ? '✅' : cogReflexSignal.quality === 'review' ? '⚠️' : '❌'}</h3>
+          <div style={{ fontSize: 13, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span>Avg: {cogReflexSignal.avg_ms} ms | Median: {cogReflexSignal.median_ms} ms</span>
+            <span>Too fast: {cogReflexSignal.too_fast_count} | Too slow: {cogReflexSignal.too_slow_count}</span>
+            <span>Regularity: {cogReflexSignal.regularity_score}</span>
+          </div>
+        </div>
+      )}
+
+      {cogStroopSignal && phase !== 'cognitive-stroop' && (
+        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Stroop: {cogStroopSignal.quality === 'ok' ? '✅' : cogStroopSignal.quality === 'review' ? '⚠️' : '❌'}</h3>
+          <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
+            <span>Accuracy: {(cogStroopSignal.accuracy * 100).toFixed(0)}% | Conflict cost: {cogStroopSignal.conflict_cost_ms} ms</span>
+          </div>
+        </div>
+      )}
+
+      {cogDigitSpanSignal && phase !== 'cognitive-digit-span' && (
+        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Digit Span: {cogDigitSpanSignal.quality === 'ok' ? '✅' : cogDigitSpanSignal.quality === 'review' ? '⚠️' : '❌'}</h3>
+          <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
+            <span>Max span: {cogDigitSpanSignal.max_span} | Accuracy: {(cogDigitSpanSignal.accuracy * 100).toFixed(0)}%</span>
+          </div>
+        </div>
+      )}
+
+      {cogNBackSignal && phase !== 'cognitive-nback' && (
+        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>N-Back: {cogNBackSignal.quality === 'ok' ? '✅' : cogNBackSignal.quality === 'review' ? '⚠️' : '❌'}</h3>
+          <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
+            <span>Hits: {cogNBackSignal.hits} | FP: {cogNBackSignal.false_positives} | Misses: {cogNBackSignal.misses}</span>
+          </div>
+        </div>
+      )}
+
+      {cogTrailTapSignal && phase !== 'cognitive-trail-tap' && (
+        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Trail Tap: {cogTrailTapSignal.quality === 'ok' ? '✅' : cogTrailTapSignal.quality === 'review' ? '⚠️' : '❌'}</h3>
+          <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
+            <span>Completion: {cogTrailTapSignal.completion_ms} ms | Wrong: {cogTrailTapSignal.wrong_taps} | Efficiency: {cogTrailTapSignal.path_efficiency}</span>
+          </div>
+        </div>
+      )}
+
+      {cogVocalRanSignal && phase !== 'cognitive-vocal-ran' && (
+        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Vocal RAN: {cogVocalRanSignal.quality === 'ok' ? '✅' : cogVocalRanSignal.quality === 'review' ? '⚠️' : '❌'}</h3>
+          <div style={{ fontSize: 13, color: 'var(--secondary-label)' }}>
+            <span>Duration: {cogVocalRanSignal.duration_ms} ms | Audio: {cogVocalRanSignal.audio_present ? '✅' : '❌'}</span>
+          </div>
+        </div>
+      )}
+
       {/* Device signals loading */}
       {phase === 'device-signals' && (
         <div style={{ textAlign: 'center', padding: 24 }}>
@@ -625,10 +1271,10 @@ export function DemoGuard() {
         </div>
       )}
 
-      {/* Step 6: Signal readiness */}
+      {/* Step 6: Sensor readiness (separate from cognitive) */}
       {quality && (phase === 'readiness' || phase === 'submitting' || phase === 'done' || phase === 'error') && (
         <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Signal Readiness</h3>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Sensor Readiness</h3>
           <div style={{ fontSize: 13, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span>Completeness: {(completeness * 100).toFixed(0)}%</span>
             <span>Device ready: {quality.device_ready ? '✅' : '❌'}</span>
@@ -638,15 +1284,40 @@ export function DemoGuard() {
         </div>
       )}
 
-      {/* Step 7: Submit */}
+      {/* Cognitive depth summary (shown alongside sensor readiness) */}
+      {cogSummary && (phase === 'readiness' || phase === 'submitting' || phase === 'done' || phase === 'error') && (
+        <div style={{ borderRadius: 10, border: '1px solid var(--separator)', padding: 12 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Cognitive Depth</h3>
+          <div style={{ fontSize: 13, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span>Modules: {cogSummary.completed_modules} / {cogSummary.total_modules}</span>
+            <span>Depth: {(cogSummary.depth_score * 100).toFixed(0)}%</span>
+            <span>Consistency: {(cogSummary.consistency_score * 100).toFixed(0)}%</span>
+            <span>Human likelihood: {cogSummary.human_likelihood}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Step 7: Submit with cognitive depth warning */}
       {quality && phase === 'readiness' && (
-        <Button
-          onClick={handleSubmit}
-          disabled={!sessionPublicId.trim()}
-          variant="secondary"
-        >
-          Submit DemoGuard
-        </Button>
+        <div>
+          {cogSummary && cogSummary.depth_score < 0.65 && (
+            <div style={{ marginBottom: 8, padding: 10, borderRadius: 8, background: 'rgba(234, 179, 8, 0.1)', fontSize: 13, color: '#eab308' }}>
+              ⚠️ Cognitive depth is low ({(cogSummary.depth_score * 100).toFixed(0)}% below 65%). Submit with caution.
+            </div>
+          )}
+          {cogSummary && cogSummary.completed_modules < 4 && (
+            <div style={{ marginBottom: 8, padding: 10, borderRadius: 8, background: 'rgba(234, 179, 8, 0.1)', fontSize: 13, color: '#eab308' }}>
+              ⚠️ Only {cogSummary.completed_modules} cognitive modules completed. Recommended: 4+.
+            </div>
+          )}
+          <Button
+            onClick={handleSubmit}
+            disabled={!sessionPublicId.trim()}
+            variant="secondary"
+          >
+            Submit DemoGuard
+          </Button>
+        </div>
       )}
 
       {/* Step 8: Safe response */}
@@ -655,11 +1326,18 @@ export function DemoGuard() {
           <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Response</h3>
           <div style={{ fontSize: 13, color: 'var(--secondary-label)', display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span>Received: {response.received ? '✅' : '❌'}</span>
+            {response.traceId && <span>Trace ID: {response.traceId}</span>}
             {response.quality_score != null && <span>Quality score: {(response.quality_score * 100).toFixed(0)}%</span>}
             <span>Ready: {response.ready ? '✅' : '❌'}</span>
             {response.message && <span>Message: {response.message}</span>}
             {response.hybridFusion && (
-              <span>Fusion: {response.hybridFusion.triggered ? '✅' : '❌'}{response.hybridFusion.globalDecision ? ` | ${response.hybridFusion.globalDecision}` : ''}</span>
+              <>
+                <span>Fusion: {response.hybridFusion.triggered ? '✅' : '❌'}{response.hybridFusion.globalDecision ? ` | ${response.hybridFusion.globalDecision}` : ''}</span>
+                {response.hybridFusion.trustLevel && <span>Trust level: {response.hybridFusion.trustLevel}</span>}
+                {response.hybridFusion.cognitiveStatus && <span>Cognitive: {response.hybridFusion.cognitiveStatus}</span>}
+                {response.hybridFusion.vocalStatus && <span>Vocal: {response.hybridFusion.vocalStatus}</span>}
+                {response.hybridFusion.monitoringRecorded != null && <span>Monitoring: {response.hybridFusion.monitoringRecorded ? '✅ Recorded' : '❌ Not recorded'}</span>}
+              </>
             )}
           </div>
         </div>

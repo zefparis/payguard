@@ -8,6 +8,8 @@
  * Patents Pending FR2514274 | FR2514546
  */
 
+import type { CognitiveSignals } from './cognitive/cognitiveTypes';
+
 // ─── Device context ────────────────────────────────────────────────
 
 export interface DemoGuardDeviceContext {
@@ -122,6 +124,7 @@ export interface DemoGuardSignals {
   touch: DemoGuardTouchSignal | null;
   visibility: DemoGuardVisibilitySignal | null;
   network: DemoGuardNetworkSignal | null;
+  cognitive?: CognitiveSignals | null;
 }
 
 // ─── Quality ───────────────────────────────────────────────────────
@@ -166,6 +169,9 @@ export interface DemoGuardHybridFusion {
   triggered: boolean;
   globalDecision?: string;
   trustLevel?: string;
+  cognitiveStatus?: 'passed' | 'review' | 'failed';
+  vocalStatus?: 'passed' | 'review' | 'failed';
+  monitoringRecorded?: boolean;
 }
 
 export interface DemoGuardSafeResponse {
@@ -176,5 +182,6 @@ export interface DemoGuardSafeResponse {
   quality_score?: number;
   ready?: boolean;
   message?: string;
+  traceId?: string;
   hybridFusion?: DemoGuardHybridFusion;
 }
