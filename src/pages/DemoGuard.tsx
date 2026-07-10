@@ -108,7 +108,7 @@ import {
 } from '../demoguard/cognitive/vocalRanChallenge';
 import { computeCognitiveSummary } from '../demoguard/cognitive/cognitiveScoring';
 
-const VOICE_KEY = ['voice', '_b64'].join('');
+const VOICE_KEY = 'voice_b64' as const;
 
 function buildVoiceDiagnosticsSafe(
   voiceSignal: DemoGuardVoiceSignal | null,
