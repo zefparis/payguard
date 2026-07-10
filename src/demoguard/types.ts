@@ -165,6 +165,8 @@ export interface DemoGuardSignals {
   visibility: DemoGuardVisibilitySignal | null;
   network: DemoGuardNetworkSignal | null;
   cognitive?: CognitiveSignals | null;
+  voiceDiagnostics?: VoiceDiagnosticsSafe;
+  touchDiagnostics?: TouchDiagnosticsSafe;
 }
 
 // ─── Quality ───────────────────────────────────────────────────────
@@ -184,6 +186,33 @@ export interface DemoGuardSensitive {
   selfie_b64?: string;
   voice_b64?: string;
   mfcc_summary?: number[];
+}
+
+// ─── Safe diagnostics contracts (P10-FINAL) ───────────────────────
+
+export interface VoiceDiagnosticsSafe {
+  status: 'passed' | 'review' | 'failed' | 'not_checked';
+  reasonSafe: string;
+  analysisMode: 'full_audio' | 'metadata_only' | 'skipped' | 'failed';
+  audioCaptured: boolean;
+  payloadPrepared: boolean;
+  relayAttempted: boolean;
+  relayAccepted: boolean;
+  hcsAnalyzed: boolean;
+  featuresExtracted: boolean;
+  livenessStatus: 'present' | 'review' | 'absent' | 'unknown';
+  confidence: number | null;
+  latencyMs: number | null;
+}
+
+export interface TouchDiagnosticsSafe {
+  status: 'ok' | 'review' | 'missing' | 'unsupported';
+  supported: boolean;
+  interactionCount: number;
+  touchStartCount?: number;
+  pointerTouchCount?: number;
+  quality: 'ok' | 'review' | 'missing' | 'unsupported';
+  reasonSafe: string;
 }
 
 // ─── Payload ───────────────────────────────────────────────────────
@@ -214,6 +243,8 @@ export interface DemoGuardHybridFusion {
   monitoringRecorded?: boolean;
   monitoringStatus?: 'recorded' | 'pending' | 'failed';
   vocalDiagnostic?: DemoGuardVoiceDiagnostic;
+  voiceDiagnostics?: VoiceDiagnosticsSafe;
+  touchDiagnostics?: TouchDiagnosticsSafe;
 }
 
 export interface DemoGuardSafeResponse {
