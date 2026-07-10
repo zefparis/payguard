@@ -205,11 +205,21 @@ export default async function demoguardVerifyHandler(
   body.tenant_id = getTenantId();
 
   // ── Safe log: voice_b64 presence (never log the value itself) ──
-  const hasVoiceB64 = !!(body.sensitive as Record<string, unknown> | undefined)?.voice_b64;
+  const sensitive = body.sensitive as Record<string, unknown> | undefined;
+  const voiceB64 = sensitive?.voice_b64 as string | undefined;
+  const hasVoiceB64 = !!voiceB64;
+  const voiceB64ByteLen = voiceB64 ? Math.round(voiceB64.length * 3 / 4) : 0;
+  const audioSizeBucket = voiceB64
+    ? (voiceB64ByteLen < 2048 ? 'small' : voiceB64ByteLen < 16384 ? 'medium' : 'large')
+    : 'none';
+  const voiceSignal = (body.demo_guard as Record<string, unknown>)?.signals as Record<string, unknown> | undefined;
+  const voiceDurationMs = (voiceSignal?.voice as Record<string, unknown>)?.duration_ms as number | undefined;
   safeLog('info', {
-    msg: 'demoguard_proxy_request',
-    hasVoiceB64,
-    hasSensitive: !!body.sensitive,
+    event: 'demoguard_voice_forward',
+    voicePresent: hasVoiceB64,
+    audioSizeBucket,
+    durationMs: voiceDurationMs ?? null,
+    mimeType: hasVoiceB64 ? 'audio/wav' : null,
     sessionPublicId: sessionId,
   });
 

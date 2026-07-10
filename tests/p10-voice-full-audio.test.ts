@@ -130,7 +130,13 @@ describe('P10-VOICE-FULL-AUDIO — Proxy forwarding', () => {
 
   it('proxy logs voice_b64 presence without value', () => {
     expect(proxySrc).toContain('hasVoiceB64');
-    expect(proxySrc).toContain('demoguard_proxy_request');
+    expect(proxySrc).toContain('demoguard_voice_forward');
+  });
+
+  it('proxy logs audio size bucket and duration safely', () => {
+    expect(proxySrc).toContain('audioSizeBucket');
+    expect(proxySrc).toContain('durationMs');
+    expect(proxySrc).toContain('mimeType');
   });
 
   it('proxy does not strip sensitive from body before forwarding', () => {
