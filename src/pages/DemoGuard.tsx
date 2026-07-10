@@ -107,6 +107,21 @@ import {
   type VocalRanChallenge,
 } from '../demoguard/cognitive/vocalRanChallenge';
 import { computeCognitiveSummary } from '../demoguard/cognitive/cognitiveScoring';
+import {
+  getTouchBehaviorCollector,
+  resetTouchBehaviorCollector,
+} from '../demoguard/behavior/touchBehaviorCollector';
+import {
+  recordTaskStart,
+  recordReflexTap,
+  recordStroopSelection,
+  recordDigitSpanKey,
+  recordDigitSpanSubmit,
+  recordNBackDecision,
+  recordTrailTap,
+  recordVocalRanInteraction,
+} from '../demoguard/behavior/taskBehaviorRecorder';
+import type { BehaviorSummary, TouchDiagnosticsBehaviorSafe } from '../demoguard/behavior/behaviorTypes';
 
 const VOICE_KEY = 'voice_b64' as const;
 
@@ -165,7 +180,17 @@ function buildVoiceDiagnosticsSafe(
 
 function buildTouchDiagnosticsSafe(
   touchSignal: DemoGuardTouchSignal | null,
+  behaviorDiag: TouchDiagnosticsBehaviorSafe | null,
 ): TouchDiagnosticsSafe {
+  if (behaviorDiag) {
+    return {
+      status: behaviorDiag.status,
+      supported: behaviorDiag.supported,
+      interactionCount: behaviorDiag.interactionCount,
+      quality: behaviorDiag.quality,
+      reasonSafe: behaviorDiag.reasonSafe,
+    };
+  }
   if (!touchSignal) {
     return {
       status: 'missing',
@@ -247,6 +272,7 @@ export function DemoGuard() {
   const [cogTrailTapSignal, setCogTrailTapSignal] = useState<TrailTapSignal | null>(null);
   const [cogVocalRanSignal, setCogVocalRanSignal] = useState<VocalRanSignal | null>(null);
   const [cogSummary, setCogSummary] = useState<CognitiveSummary | null>(null);
+  const [behaviorSummary, setBehaviorSummary] = useState<BehaviorSummary | null>(null);
 
   // Cognitive reflex state
   const [cogReflexPhase, setCogReflexPhase] = useState<ReactionPhase>('ready');
@@ -298,6 +324,8 @@ export function DemoGuard() {
     setVisibilitySignal(null);
     setNetworkSignal(null);
     setQuality(null);
+    setBehaviorSummary(null);
+    resetTouchBehaviorCollector();
     sensitiveRef.current = {};
     try {
       setPhase('device');
@@ -460,17 +488,20 @@ export function DemoGuard() {
     if (cogReflexPhase === 'ready') {
       setCogLastReflexMs(null);
       setCogReflexPhase('wait');
+      recordTaskStart('reflex');
       return;
     }
     if (cogReflexPhase === 'wait') {
       if (cogReflexTimerRef.current) window.clearTimeout(cogReflexTimerRef.current);
       setCogReflexPhase('too_early');
+      recordReflexTap(0, true);
       return;
     }
     if (cogReflexPhase === 'go') {
       const ms = performance.now() - cogGoAtRef.current;
       const round = evaluateReflexRound(ms);
       setCogLastReflexMs(round.ms);
+      recordReflexTap(round.ms, round.too_fast);
       const next = [...cogReflexResults, round];
       setCogReflexResults(next);
       if (next.length >= COG_REFLEX_ROUNDS) {
@@ -499,6 +530,7 @@ export function DemoGuard() {
   // ── Cognitive Stroop ──
   const handleStroopSelect = useCallback((color: StroopColor) => {
     if (phase !== 'cognitive-stroop' || stroopIndex >= stroopTrials.length) return;
+    if (stroopIndex === 0) recordTaskStart('stroop');
     const rt = performance.now() - stroopStartRef.current;
     const trial = stroopTrials[stroopIndex];
     const result: StroopTrialResult = {
@@ -507,6 +539,7 @@ export function DemoGuard() {
       correct: color === trial.displayColor,
       response_ms: Math.round(rt),
     };
+    recordStroopSelection(color, color === trial.displayColor, Math.round(rt), false);
     const next = [...stroopResults, result];
     setStroopResults(next);
     if (next.length >= stroopTrials.length) {
@@ -544,8 +577,10 @@ export function DemoGuard() {
 
   const handleDigitSpanSubmit = useCallback(() => {
     if (phase !== 'cognitive-digit-span' || digitSpanIndex >= digitSpanTrials.length) return;
+    if (digitSpanIndex === 0) recordTaskStart('digit_span');
     const trial = digitSpanTrials[digitSpanIndex];
     const input = digitSpanInput.split('').map(Number).filter((n) => !isNaN(n));
+    recordDigitSpanSubmit();
     const result = evaluateDigitSpanTrial(trial, input);
     const next = [...digitSpanResults, result];
     setDigitSpanResults(next);
@@ -574,9 +609,12 @@ export function DemoGuard() {
   // ── Cognitive N-Back ──
   const handleNBackResponse = useCallback((saidMatch: boolean) => {
     if (phase !== 'cognitive-nback' || nbackIndex >= nbackTrials.length) return;
+    if (nbackIndex === 0) recordTaskStart('n_back');
     const rt = performance.now() - nbackStartRef.current;
     const trial = nbackTrials[nbackIndex];
     const result = evaluateNBackTrial(trial, saidMatch, rt);
+    const isCorrect = result.isHit || result.isCorrectRejection;
+    recordNBackDecision(isCorrect, Math.round(rt));
     const next = [...nbackResults, result];
     setNbackResults(next);
     if (next.length >= nbackTrials.length) {
@@ -607,9 +645,26 @@ export function DemoGuard() {
     const now = performance.now();
     if (trailStartRef.current === 0) {
       trailStartRef.current = now;
+      recordTaskStart('trail_tap');
     }
     const expectedId = trailEvents.filter((e) => e.correct).length + 1;
     const correct = nodeId === expectedId;
+    // Compute path segment distances for path efficiency
+    let pathSegmentDistance: number | null = null;
+    let optimalSegmentDistance: number | null = null;
+    const lastCorrectEvent = [...trailEvents].reverse().find((e) => e.correct);
+    if (lastCorrectEvent && correct) {
+      const prevNode = trailNodes.find((n) => n.id === lastCorrectEvent.nodeId);
+      const currNode = trailNodes.find((n) => n.id === nodeId);
+      const nextNode = trailNodes.find((n) => n.id === nodeId + 1);
+      if (prevNode && currNode) {
+        pathSegmentDistance = Math.sqrt((currNode.x - prevNode.x) ** 2 + (currNode.y - prevNode.y) ** 2);
+      }
+      if (currNode && nextNode) {
+        optimalSegmentDistance = Math.sqrt((nextNode.x - currNode.x) ** 2 + (nextNode.y - currNode.y) ** 2);
+      }
+    }
+    recordTrailTap(correct, pathSegmentDistance, optimalSegmentDistance);
     const event: TrailTapEvent = { nodeId, timestamp: now - (trailStartRef.current || now), correct };
     const next = [...trailEvents, event];
     setTrailEvents(next);
@@ -635,6 +690,8 @@ export function DemoGuard() {
     if (!vocalRanChallenge) return;
     setVocalRanRecording(true);
     vocalRanStartRef.current = performance.now();
+    recordTaskStart('vocal_ran');
+    recordVocalRanInteraction();
     try {
       const result = await recordVoiceChallenge(5000, vocalRanChallenge.challenge_id);
       const durationMs = performance.now() - vocalRanStartRef.current;
@@ -674,6 +731,8 @@ export function DemoGuard() {
     const summary = computeCognitiveSummary(cogSignals);
     cogSignals.summary = summary;
     setCogSummary(summary);
+    const behaviorSummary = getTouchBehaviorCollector().getSummary();
+    setBehaviorSummary(behaviorSummary);
     setPhase('cognitive-summary');
   }, [cogReflexSignal, cogStroopSignal, cogDigitSpanSignal, cogNBackSignal, cogTrailTapSignal, cogVocalRanSignal]);
 
@@ -742,10 +801,12 @@ export function DemoGuard() {
       visibility: visibilitySignal,
       network: networkSignal,
       cognitive: cogSignals,
+      behavior: behaviorSummary ? getTouchBehaviorCollector().getPayload() : null,
+      touchDiagnosticsBehavior: behaviorSummary ? getTouchBehaviorCollector().getTouchDiagnostics() : undefined,
     };
     const q = computeQuality(signals, device, permissions);
     setQuality(q);
-  }, [phase, device, permissions, selfieSignal, reactionSignal, voiceSignal, motionSignal, orientationSignal, touchSignal, visibilitySignal, networkSignal, cogSummary, cogReflexSignal, cogStroopSignal, cogDigitSpanSignal, cogNBackSignal, cogTrailTapSignal, cogVocalRanSignal]);
+  }, [phase, device, permissions, selfieSignal, reactionSignal, voiceSignal, motionSignal, orientationSignal, touchSignal, visibilitySignal, networkSignal, cogSummary, cogReflexSignal, cogStroopSignal, cogDigitSpanSignal, cogNBackSignal, cogTrailTapSignal, cogVocalRanSignal, behaviorSummary]);
 
   // ── Submit ──
   const handleSubmit = useCallback(async () => {
@@ -771,6 +832,8 @@ export function DemoGuard() {
       vocal_ran: cogVocalRanSignal,
       summary: cogSummary,
     } : null;
+    const behaviorPayload = getTouchBehaviorCollector().getPayload();
+    const behaviorDiag = getTouchBehaviorCollector().getTouchDiagnostics();
     const signals: DemoGuardSignals = {
       selfie: selfieSignal,
       reaction: reactionSignal,
@@ -781,8 +844,10 @@ export function DemoGuard() {
       visibility: visibilitySignal,
       network: networkSignal,
       cognitive: cogSignals,
+      behavior: behaviorPayload,
       voiceDiagnostics: buildVoiceDiagnosticsSafe(voiceSignal, voiceDiagnostic, !!sensitiveRef.current[VOICE_KEY]),
-      touchDiagnostics: buildTouchDiagnosticsSafe(touchSignal),
+      touchDiagnostics: buildTouchDiagnosticsSafe(touchSignal, behaviorDiag),
+      touchDiagnosticsBehavior: behaviorDiag,
     };
     const q = quality ?? computeQuality(signals, device, permissions);
 
@@ -1184,7 +1249,15 @@ export function DemoGuard() {
                 type="text"
                 inputMode="numeric"
                 value={digitSpanInput}
-                onChange={(e) => setDigitSpanInput(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => {
+                  const newVal = e.target.value.replace(/\D/g, '');
+                  if (newVal.length < digitSpanInput.length) {
+                    recordDigitSpanKey(true);
+                  } else if (newVal.length > digitSpanInput.length) {
+                    recordDigitSpanKey(false);
+                  }
+                  setDigitSpanInput(newVal);
+                }}
                 className="dg-digit-input"
               />
               <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
@@ -1334,8 +1407,28 @@ export function DemoGuard() {
               {orientationSignal?.supported && <span className="dg-grid-item-detail">{orientationSignal.changes} changes</span>}
             </div>
             <div className="dg-grid-item">
-              <div className="dg-grid-item-header"><span className="dg-grid-item-label">Touch</span><span className={`dg-badge ${touchSignal?.quality === 'ok' ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{touchSignal?.quality ?? '—'}</span></div>
-              {touchSignal && touchSignal.touch_count > 0 && <span className="dg-grid-item-detail">{touchSignal.touch_count} touches{touchSignal.multi_touch_detected ? ' · multi' : ''}</span>}
+              <div className="dg-grid-item-header">
+                <span className="dg-grid-item-label">Touch</span>
+                <span className={`dg-badge ${
+                  behaviorSummary
+                    ? behaviorSummary.totalInteractions > 0
+                      ? behaviorSummary.quality === 'ok' ? 'dg-badge-ok' : 'dg-badge-review'
+                      : 'dg-badge-missing'
+                    : touchSignal?.quality === 'ok' ? 'dg-badge-ok' : 'dg-badge-missing'
+                }`}>
+                  {behaviorSummary
+                    ? behaviorSummary.totalInteractions > 0
+                      ? behaviorSummary.quality === 'ok' ? 'Active' : 'Review'
+                      : 'Missing'
+                    : touchSignal?.quality ?? '—'}
+                </span>
+              </div>
+              {behaviorSummary && behaviorSummary.totalInteractions > 0 && (
+                <span className="dg-grid-item-detail">{behaviorSummary.totalInteractions} interactions · {behaviorSummary.tasksObserved}/6 tasks</span>
+              )}
+              {behaviorSummary && behaviorSummary.totalInteractions === 0 && touchSignal && touchSignal.touch_count > 0 && (
+                <span className="dg-grid-item-detail">{touchSignal.touch_count} touches</span>
+              )}
             </div>
             <div className="dg-grid-item">
               <div className="dg-grid-item-header"><span className="dg-grid-item-label">Focus</span><span className={`dg-badge ${visibilitySignal?.quality === 'ok' ? 'dg-badge-ok' : 'dg-badge-review'}`}>{visibilitySignal?.quality ?? '—'}</span></div>
@@ -1397,6 +1490,12 @@ export function DemoGuard() {
           <div className="dg-row"><span className="dg-row-label">Consistency</span><span className="dg-row-value">{(cogSummary.consistency_score * 100).toFixed(0)}%</span></div>
           <div className="dg-row"><span className="dg-row-label">Anomaly</span><span className="dg-row-value" style={{ color: cogSummary.anomaly_score < 0.3 ? 'var(--dg-green)' : cogSummary.anomaly_score < 0.5 ? 'var(--dg-amber)' : 'var(--dg-red)' }}>{cogSummary.anomaly_score < 0.3 ? 'low' : cogSummary.anomaly_score < 0.5 ? 'medium' : 'high'}</span></div>
           <div className="dg-row"><span className="dg-row-label">Human likelihood</span><span className={`dg-badge ${cogSummary.human_likelihood === 'high' ? 'dg-badge-ok' : cogSummary.human_likelihood === 'medium' ? 'dg-badge-review' : 'dg-badge-failed'}`}>{cogSummary.human_likelihood}</span></div>
+          {behaviorSummary && (
+            <>
+              <div className="dg-row"><span className="dg-row-label">Behavioral consistency</span><span className="dg-row-value">{(behaviorSummary.consistencyScore * 100).toFixed(0)}%</span></div>
+              <div className="dg-row"><span className="dg-row-label">Motor confidence</span><span className="dg-row-value">{(behaviorSummary.motorConfidence * 100).toFixed(0)}%</span></div>
+            </>
+          )}
           <div className={`dg-interp ${cogSummary.human_likelihood === 'high' ? 'dg-interp-strong' : cogSummary.human_likelihood === 'medium' ? 'dg-interp-medium' : 'dg-interp-weak'}`}>
             {cogSummary.human_likelihood === 'high'
               ? 'Cognitive profile strongly suggests human liveness across multiple domains.'
@@ -1404,6 +1503,24 @@ export function DemoGuard() {
               ? 'Cognitive profile is ambiguous — some modules show non-human patterns.'
               : 'Cognitive profile shows significant anomaly — review recommended.'}
           </div>
+        </div>
+      )}
+
+      {/* ═══ 5. Behavioral Touch Panel ═══ */}
+      {behaviorSummary && behaviorSummary.totalInteractions > 0 && (phase === 'readiness' || phase === 'submitting' || phase === 'done' || phase === 'error') && (
+        <div className="dg-card">
+          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Behavioral Touch</h3>
+          <div className="dg-row">
+            <span className="dg-row-label">Status</span>
+            <span className={`dg-badge ${behaviorSummary.quality === 'ok' ? 'dg-badge-ok' : behaviorSummary.quality === 'review' ? 'dg-badge-review' : 'dg-badge-missing'}`}>
+              {behaviorSummary.quality === 'ok' ? 'Active' : behaviorSummary.quality === 'review' ? 'Review' : 'Missing'}
+            </span>
+          </div>
+          <div className="dg-row"><span className="dg-row-label">Tasks observed</span><span className="dg-row-value">{behaviorSummary.tasksObserved} / 6</span></div>
+          <div className="dg-row"><span className="dg-row-label">Interactions</span><span className="dg-row-value">{behaviorSummary.totalInteractions}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Motor consistency</span><span className="dg-row-value">{(behaviorSummary.consistencyScore * 100).toFixed(0)}%</span></div>
+          <div className="dg-row"><span className="dg-row-label">Hesitation</span><span className="dg-row-value">{behaviorSummary.hesitationTotal <= 2 ? 'low' : behaviorSummary.hesitationTotal <= 5 ? 'medium' : 'high'}</span></div>
+          <div className="dg-row"><span className="dg-row-label">Behavior likelihood</span><span className={`dg-badge ${behaviorSummary.behaviorLikelihood === 'high' ? 'dg-badge-ok' : behaviorSummary.behaviorLikelihood === 'medium' ? 'dg-badge-review' : 'dg-badge-failed'}`}>{behaviorSummary.behaviorLikelihood}</span></div>
         </div>
       )}
 

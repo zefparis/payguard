@@ -9,6 +9,7 @@
  */
 
 import type { CognitiveSignals } from './cognitive/cognitiveTypes';
+import type { BehaviorPayload, TouchDiagnosticsBehaviorSafe } from './behavior/behaviorTypes';
 
 // ─── Device context ────────────────────────────────────────────────
 
@@ -167,8 +168,10 @@ export interface DemoGuardSignals {
   visibility: DemoGuardVisibilitySignal | null;
   network: DemoGuardNetworkSignal | null;
   cognitive?: CognitiveSignals | null;
+  behavior?: BehaviorPayload | null;
   voiceDiagnostics?: VoiceDiagnosticsSafe;
   touchDiagnostics?: TouchDiagnosticsSafe;
+  touchDiagnosticsBehavior?: TouchDiagnosticsBehaviorSafe;
 }
 
 // ─── Quality ───────────────────────────────────────────────────────
