@@ -27,8 +27,16 @@ export function computeSignalCompleteness(signals: DemoGuardSignals): number {
     return true;
   }).length;
 
-  const totalSlots = CRITICAL_SLOTS.length + OPTIONAL_SLOTS.length;
-  const filled = criticalFilled + optionalFilled;
+  // Cognitive: count completed modules (out of 6)
+  let cognitiveFilled = 0;
+  if (signals.cognitive) {
+    const cog = signals.cognitive;
+    const cogModules = [cog.reflex, cog.stroop, cog.digit_span, cog.n_back, cog.trail_tap, cog.vocal_ran];
+    cognitiveFilled = cogModules.filter((m) => m !== null).length;
+  }
+
+  const totalSlots = CRITICAL_SLOTS.length + OPTIONAL_SLOTS.length + 6; // 6 cognitive modules
+  const filled = criticalFilled + optionalFilled + cognitiveFilled;
   return filled / totalSlots;
 }
 
