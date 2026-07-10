@@ -20,7 +20,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ROUTES } from '../constants/routes';
 import { Button } from '../ui/Button';
 import { collectDeviceContext } from '../demoguard/collectors/deviceCollector';
@@ -111,7 +111,17 @@ type ReactionPhase = 'ready' | 'wait' | 'go' | 'too_early' | 'done';
 
 export function DemoGuard() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [sessionPublicId, setSessionPublicId] = useState('');
+
+  // Pre-fill sessionPublicId from URL query param (?sessionPublicId=hcs_sess_...)
+  // Does NOT auto-submit — user must still click "Start DemoGuard Check"
+  useEffect(() => {
+    const querySession = searchParams.get('sessionPublicId');
+    if (querySession && /^hcs_sess_[A-Za-z0-9_-]+$/.test(querySession)) {
+      setSessionPublicId(querySession);
+    }
+  }, [searchParams]);
   const [phase, setPhase] = useState<Phase>('idle');
   const [device, setDevice] = useState<DemoGuardDeviceContext | null>(null);
   const [permissions, setPermissions] = useState<DemoGuardPermissions | null>(null);
