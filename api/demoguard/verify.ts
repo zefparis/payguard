@@ -204,6 +204,15 @@ export default async function demoguardVerifyHandler(
   body.source = 'demoguard_mobile';
   body.tenant_id = getTenantId();
 
+  // ── Safe log: voice_b64 presence (never log the value itself) ──
+  const hasVoiceB64 = !!(body.sensitive as Record<string, unknown> | undefined)?.voice_b64;
+  safeLog('info', {
+    msg: 'demoguard_proxy_request',
+    hasVoiceB64,
+    hasSensitive: !!body.sensitive,
+    sessionPublicId: sessionId,
+  });
+
   // ── API key (server-side only) ──
   const apiKey = process.env.HV_API_KEY;
   if (!apiKey) {

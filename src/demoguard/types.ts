@@ -100,6 +100,10 @@ export interface DemoGuardVoiceDiagnostic {
   latencyMs: number | null;
   analysisMode: DemoGuardAnalysisMode;
   audioPipelineStatus: DemoGuardAudioPipelineStatus;
+  recordingSupported: boolean;
+  recordingStarted: boolean;
+  recordingStopped: boolean;
+  mimeType: string | null;
 }
 
 // ─── Device signal metadata ───────────────────────────────────────

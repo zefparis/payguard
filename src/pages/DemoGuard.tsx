@@ -747,7 +747,9 @@ export function DemoGuard() {
 
   // ── Submit warnings (not blocking) ──
   const submitWarnings: string[] = [];
-  if (voiceSignal && !voiceSignal.recorded) submitWarnings.push('Voice sample missing — cognitive signals will carry the decision');
+  if (voiceSignal && !voiceSignal.recorded) submitWarnings.push('⚠️ Voice sample missing — vocal liveness analysis will be skipped. Record a voice sample for full security coverage.');
+  if (voiceSignal && voiceSignal.recorded && voiceSignal.quality === 'low') submitWarnings.push('⚠️ Voice sample quality is low — consider re-recording for better vocal analysis.');
+  if (!voiceSignal) submitWarnings.push('⚠️ Voice capture step not completed — vocal liveness analysis will be skipped.');
   if (motionSignal && motionSignal.quality === 'unsupported') submitWarnings.push('Motion sensor unsupported on this device');
   if (orientationSignal && orientationSignal.quality === 'unsupported') submitWarnings.push('Orientation sensor unsupported on this device');
   if (cogSummary && cogSummary.depth_score < 0.65) submitWarnings.push(`Cognitive depth low (${(cogSummary.depth_score * 100).toFixed(0)}%) — submit with caution`);

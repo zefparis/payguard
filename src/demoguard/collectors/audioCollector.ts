@@ -8,7 +8,7 @@
  * Patents Pending FR2514274 | FR2514546
  */
 
-import { recordAudio, computeVocalEmbedding } from '../../lib/audio';
+import { recordAudio, computeVocalEmbedding, encodeWav } from '../../lib/audio';
 import type { DemoGuardVoiceSignal, DemoGuardVoiceDiagnostic } from '../types';
 
 function computeAudioSizeBucket(byteLength: number): DemoGuardVoiceDiagnostic['audioSizeBucket'] {
@@ -73,6 +73,10 @@ export async function recordVoiceChallenge(
           latencyMs: null,
           analysisMode: 'skipped',
           audioPipelineStatus: 'missing',
+          recordingSupported: true,
+          recordingStarted: true,
+          recordingStopped: true,
+          mimeType: null,
         },
       };
     }
@@ -86,8 +90,17 @@ export async function recordVoiceChallenge(
 
     const quality: 'ok' | 'low' = durationMsActual > 2000 ? 'ok' : 'low';
 
-    const voiceB64 = btoa(String.fromCharCode(...new Uint8Array(samples[0].buffer.slice(0, 1024))));
-    const audioByteLength = samples[0].buffer.byteLength;
+    // Encode full audio as 16-bit PCM WAV — not just first 1024 bytes
+    const wavBytes = encodeWav(samples[0], 16000);
+    const audioByteLength = wavBytes.length;
+    // Encode in chunks to avoid call stack overflow on large arrays
+    const CHUNK = 0x8000;
+    let voiceB64 = '';
+    for (let i = 0; i < wavBytes.length; i += CHUNK) {
+      const slice = wavBytes.subarray(i, Math.min(i + CHUNK, wavBytes.length));
+      voiceB64 += String.fromCharCode.apply(null, Array.from(slice));
+    }
+    voiceB64 = btoa(voiceB64);
 
     return {
       safe: {
@@ -117,6 +130,10 @@ export async function recordVoiceChallenge(
         latencyMs: null,
         analysisMode: durationMsActual > 2000 ? 'full_audio' : 'metadata_only',
         audioPipelineStatus: durationMsActual > 2000 ? 'captured' : 'too_short',
+        recordingSupported: true,
+        recordingStarted: true,
+        recordingStopped: true,
+        mimeType: 'audio/wav',
       },
     };
   } catch (err) {
@@ -141,6 +158,10 @@ export async function recordVoiceChallenge(
             latencyMs: null,
             analysisMode: 'skipped',
             audioPipelineStatus: 'permission_denied',
+            recordingSupported: false,
+            recordingStarted: false,
+            recordingStopped: false,
+            mimeType: null,
           },
         };
       }
@@ -163,6 +184,10 @@ export async function recordVoiceChallenge(
           latencyMs: null,
           analysisMode: 'skipped',
           audioPipelineStatus: 'unsupported',
+          recordingSupported: false,
+          recordingStarted: false,
+          recordingStopped: false,
+          mimeType: null,
         },
       };
     }
@@ -185,6 +210,10 @@ export async function recordVoiceChallenge(
         latencyMs: null,
         analysisMode: 'failed',
         audioPipelineStatus: 'missing',
+        recordingSupported: false,
+        recordingStarted: false,
+        recordingStopped: false,
+        mimeType: null,
       },
     };
   }
