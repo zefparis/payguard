@@ -272,9 +272,10 @@ export function DemoGuard() {
   // Cognitive Stroop state
   const [stroopTrials, setStroopTrials] = useState<StroopTrialConfig[]>([]);
   const [stroopIndex, setStroopIndex] = useState(0);
-  const [stroopResults, setStroopResults] = useState<StroopTrialResult[]>([]);
+  const [, setStroopResults] = useState<StroopTrialResult[]>([]);
   const stroopStartRef = useRef<number>(0);
   const stroopAdvancingRef = useRef(false);
+  const stroopResultsRef = useRef<StroopTrialResult[]>([]);
 
   // Cognitive Digit Span state
   const [digitSpanTrials, setDigitSpanTrials] = useState<DigitSpanTrialConfig[]>([]);
@@ -286,9 +287,10 @@ export function DemoGuard() {
   // Cognitive N-Back state
   const [nbackTrials, setNbackTrials] = useState<NBackTrialConfig[]>([]);
   const [nbackIndex, setNbackIndex] = useState(0);
-  const [nbackResults, setNbackResults] = useState<NBackTrialResult[]>([]);
+  const [, setNbackResults] = useState<NBackTrialResult[]>([]);
   const nbackStartRef = useRef<number>(0);
   const nbackAdvancingRef = useRef(false);
+  const nbackResultsRef = useRef<NBackTrialResult[]>([]);
 
   // Cognitive Trail Tap state
   const [trailNodes, setTrailNodes] = useState<TrailTapNode[]>([]);
@@ -533,6 +535,7 @@ export function DemoGuard() {
         setStroopTrials(generateStroopTrials(6));
         setStroopIndex(0);
         setStroopResults([]);
+        stroopResultsRef.current = [];
       } else {
         setCogReflexRound((r) => r + 1);
         setCogReflexPhase('ready');
@@ -549,6 +552,7 @@ export function DemoGuard() {
     setStroopTrials(generateStroopTrials(6));
     setStroopIndex(0);
     setStroopResults([]);
+    stroopResultsRef.current = [];
   }, []);
 
   // ── Cognitive Stroop ──
@@ -570,33 +574,40 @@ export function DemoGuard() {
     if (stroopPracticeMode || phase !== 'cognitive-stroop' || stroopIndex >= stroopTrials.length) return;
     if (stroopAdvancingRef.current) return;
     stroopAdvancingRef.current = true;
-    if (stroopIndex === 0) recordTaskStart('stroop');
-    const rt = performance.now() - stroopStartRef.current;
-    const trial = stroopTrials[stroopIndex];
-    const result: StroopTrialResult = {
-      config: trial,
-      selected: color,
-      correct: color === trial.displayColor,
-      response_ms: Math.round(rt),
-    };
-    recordStroopSelection(color, color === trial.displayColor, Math.round(rt), false);
-    const next = [...stroopResults, result];
-    setStroopResults(next);
-    if (next.length >= stroopTrials.length) {
-      const sig = computeStroopResult(next);
-      setCogStroopSignal(sig);
-      setPhase('cognitive-digit-span');
-      setDigitSpanTrials(generateDigitSpanTrials(3));
-      setDigitSpanIndex(0);
-      setDigitSpanInput('');
-      setDigitSpanResults([]);
-      setDigitSpanShowDigits(true);
-    } else {
-      setStroopIndex((i) => i + 1);
-      stroopStartRef.current = performance.now();
+    try {
+      if (stroopIndex === 0) recordTaskStart('stroop');
+      const rt = performance.now() - stroopStartRef.current;
+      const trial = stroopTrials[stroopIndex];
+      const result: StroopTrialResult = {
+        config: trial,
+        selected: color,
+        correct: color === trial.displayColor,
+        response_ms: Math.round(rt),
+      };
+      recordStroopSelection(color, color === trial.displayColor, Math.round(rt), false);
+      const next = [...stroopResultsRef.current, result];
+      stroopResultsRef.current = next;
+      setStroopResults(next);
+      if (import.meta.env?.DEV) {
+        console.log(JSON.stringify({ event: 'dg_stroop_tap', trialIndex: stroopIndex, selectedColor: color, expectedColor: trial.displayColor, isPractice: false, accepted: true, behaviorInteractionsBefore: getTouchBehaviorCollector().getInteractionCount() }));
+      }
+      if (next.length >= stroopTrials.length) {
+        const sig = computeStroopResult(next);
+        setCogStroopSignal(sig);
+        setPhase('cognitive-digit-span');
+        setDigitSpanTrials(generateDigitSpanTrials(3));
+        setDigitSpanIndex(0);
+        setDigitSpanInput('');
+        setDigitSpanResults([]);
+        setDigitSpanShowDigits(true);
+      } else {
+        setStroopIndex((i) => i + 1);
+        stroopStartRef.current = performance.now();
+      }
+    } finally {
+      stroopAdvancingRef.current = false;
     }
-    window.setTimeout(() => { stroopAdvancingRef.current = false; }, 150);
-  }, [phase, stroopIndex, stroopTrials, stroopResults]);
+  }, [stroopPracticeMode, phase, stroopIndex, stroopTrials]);
 
   // ── Cognitive Digit Span ──
   useEffect(() => {
@@ -625,6 +636,7 @@ export function DemoGuard() {
       setNbackTrials(generateNBackTrials(8));
       setNbackIndex(0);
       setNbackResults([]);
+      nbackResultsRef.current = [];
     } else {
       setDigitSpanIndex((i) => i + 1);
       setDigitSpanInput('');
@@ -651,28 +663,35 @@ export function DemoGuard() {
     if (nbackPracticeMode || phase !== 'cognitive-nback' || nbackIndex >= nbackTrials.length) return;
     if (nbackAdvancingRef.current) return;
     nbackAdvancingRef.current = true;
-    if (nbackIndex === 0) recordTaskStart('n_back');
-    const rt = performance.now() - nbackStartRef.current;
-    const trial = nbackTrials[nbackIndex];
-    const result = evaluateNBackTrial(trial, saidMatch, rt);
-    const isCorrect = result.isHit || result.isCorrectRejection;
-    recordNBackDecision(isCorrect, Math.round(rt));
-    const next = [...nbackResults, result];
-    setNbackResults(next);
-    if (next.length >= nbackTrials.length) {
-      const sig = computeNBackResult(next);
-      setCogNBackSignal(sig);
-      const nodes = generateTrailTapNodes(5);
-      setTrailNodes(nodes);
-      setTrailEvents([]);
-      setPhase('cognitive-trail-tap');
-      trailStartRef.current = 0;
-    } else {
-      setNbackIndex((i) => i + 1);
-      nbackStartRef.current = performance.now();
+    try {
+      if (nbackIndex === 0) recordTaskStart('n_back');
+      const rt = performance.now() - nbackStartRef.current;
+      const trial = nbackTrials[nbackIndex];
+      const result = evaluateNBackTrial(trial, saidMatch, rt);
+      const isCorrect = result.isHit || result.isCorrectRejection;
+      recordNBackDecision(isCorrect, Math.round(rt));
+      const next = [...nbackResultsRef.current, result];
+      nbackResultsRef.current = next;
+      setNbackResults(next);
+      if (import.meta.env?.DEV) {
+        console.log(JSON.stringify({ event: 'dg_nback_tap', trialIndex: nbackIndex, saidMatch, isCorrect, accepted: true, behaviorInteractionsBefore: getTouchBehaviorCollector().getInteractionCount() }));
+      }
+      if (next.length >= nbackTrials.length) {
+        const sig = computeNBackResult(next);
+        setCogNBackSignal(sig);
+        const nodes = generateTrailTapNodes(5);
+        setTrailNodes(nodes);
+        setTrailEvents([]);
+        setPhase('cognitive-trail-tap');
+        trailStartRef.current = 0;
+      } else {
+        setNbackIndex((i) => i + 1);
+        nbackStartRef.current = performance.now();
+      }
+    } finally {
+      nbackAdvancingRef.current = false;
     }
-    window.setTimeout(() => { nbackAdvancingRef.current = false; }, 150);
-  }, [nbackPracticeMode, phase, nbackIndex, nbackTrials, nbackResults]);
+  }, [nbackPracticeMode, phase, nbackIndex, nbackTrials]);
 
   // ── Cognitive Trail Tap ──
   const handleTrailTap = useCallback((nodeId: number) => {
