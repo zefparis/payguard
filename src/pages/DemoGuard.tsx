@@ -552,8 +552,10 @@ export function DemoGuard() {
   // ── Cognitive Stroop ──
   const handleStroopPracticeSelect = useCallback((color: StroopColor) => {
     if (!stroopPracticeMode || stroopPracticeIndex >= stroopPracticeTrials.length) return;
+    if (stroopPracticeIndex === 0) recordTaskStart('stroop');
     const trial = stroopPracticeTrials[stroopPracticeIndex];
     const correct = color === trial.displayColor;
+    recordStroopSelection(color, correct, 0, false);
     setStroopPracticeFeedback(correct ? 'Compris ! Continue.' : 'Non — appuie sur la couleur, pas le mot.');
     if (stroopPracticeIndex + 1 >= stroopPracticeTrials.length) {
       window.setTimeout(() => {
@@ -658,8 +660,10 @@ export function DemoGuard() {
   // ── Cognitive N-Back ──
   const handleNBackPracticeResponse = useCallback((saidMatch: boolean) => {
     if (!nbackPracticeMode || nbackPracticeIndex >= nbackPracticeTrials.length) return;
+    if (nbackPracticeIndex === 0) recordTaskStart('n_back');
     const trial = nbackPracticeTrials[nbackPracticeIndex];
     const correct = (trial.isTarget && saidMatch) || (!trial.isTarget && !saidMatch);
+    recordNBackDecision(correct, 0);
     setNbackPracticeFeedback(correct ? 'Compris ! Continue.' : trial.isTarget ? 'C\'était OUI — même symbole.' : 'C\'était NON — symbole différent.');
     if (nbackPracticeIndex + 1 >= nbackPracticeTrials.length) {
       window.setTimeout(() => {
@@ -823,7 +827,7 @@ export function DemoGuard() {
   // ── Behavior submit guard ──
   const behaviorInteractions = behaviorSummary?.totalInteractions ?? 0;
   const behaviorTouchSupported = getTouchBehaviorCollector().isSupported();
-  const behaviorBlocked = behaviorTouchSupported && behaviorInteractions === 0;
+  const behaviorBlocked = (phase === 'readiness' || phase === 'review') && behaviorTouchSupported && behaviorInteractions === 0;
 
   // ── Submit ──
   const handleSubmit = useCallback(async () => {
@@ -1330,9 +1334,18 @@ export function DemoGuard() {
           <div className="dg-row"><span className="dg-row-label">Comparaison</span><span className={`dg-badge ${cogNBackSignal?.quality === 'ok' ? 'dg-badge-ok' : cogNBackSignal ? 'dg-badge-review' : 'dg-badge-missing'}`}>{cogNBackSignal ? cogNBackSignal.quality : '—'}</span></div>
           <div className="dg-row"><span className="dg-row-label">Chemin</span><span className={`dg-badge ${cogTrailTapSignal?.quality === 'ok' ? 'dg-badge-ok' : cogTrailTapSignal ? 'dg-badge-review' : 'dg-badge-missing'}`}>{cogTrailTapSignal ? cogTrailTapSignal.quality : '—'}</span></div>
           <div className="dg-row"><span className="dg-row-label">Voix</span><span className={`dg-badge ${voiceSignal?.recorded ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{voiceSignal?.recorded ? 'OK' : '—'}</span></div>
-          <div className="dg-row"><span className="dg-row-label">Toucher</span><span className={`dg-badge ${behaviorInteractions > 0 ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{behaviorInteractions} interactions</span></div>
+          <div className="dg-row"><span className="dg-row-label">Toucher</span><span className={`dg-badge ${behaviorInteractions > 0 ? behaviorInteractions >= 5 ? 'dg-badge-ok' : 'dg-badge-review' : 'dg-badge-missing'}`}>{behaviorInteractions} interactions</span></div>
+          {behaviorSummary && (
+            <div className="dg-row"><span className="dg-row-label">Tests observés</span><span className="dg-row-value">{behaviorSummary.tasksObserved} / 6</span></div>
+          )}
+          {behaviorTouchSupported && behaviorInteractions === 0 && (
+            <div className="dg-error-box" style={{ marginTop: 8 }}>Nous n'avons pas détecté assez d'interactions tactiles. Refais les tests tactiles avant d'envoyer.</div>
+          )}
           {behaviorInteractions > 0 && behaviorInteractions < 5 && (
             <div className="dg-warning-box" style={{ marginTop: 8 }}>⚠️ Signature tactile faible — le résultat pourrait être en révision.</div>
+          )}
+          {behaviorInteractions >= 5 && (
+            <div style={{ marginTop: 8, padding: 12, borderRadius: 8, background: 'rgba(34,197,94,0.1)', color: 'var(--dg-green)', fontSize: 14 }}>✓ Signature tactile détectée.</div>
           )}
           <div style={{ marginTop: 16 }}>
             <button onClick={handleReviewContinue} className="dg-btn dg-btn-primary" style={{ width: '100%' }}>Continuer</button>
@@ -1614,7 +1627,7 @@ export function DemoGuard() {
       {/* ═══ 9. Sticky Bottom Action Bar ═══ */}
       <div className="dg-sticky-bar">
         <div className="dg-sticky-status">
-          {submitBlockReasons.length > 0 ? (
+          {phase === 'readiness' && submitBlockReasons.length > 0 ? (
             <>
               <span className="dg-sticky-status-label" style={{ color: 'var(--dg-red)' }}>Bloqué</span>
               <span className="dg-sticky-status-detail">{submitBlockReasons[0]}</span>
