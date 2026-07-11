@@ -41,25 +41,25 @@ const PAGE_SRC = fs.readFileSync(PAGE_FILE, 'utf-8');
 const INDEX_CSS_SRC = fs.readFileSync(INDEX_CSS_FILE, 'utf-8');
 
 describe('DEMOGUARD-MOBILE-RESPONSIVE-01: Container', () => {
-  it('1. .dg-page uses max-width <= 460px', () => {
-    expect(CSS_SRC).toMatch(/\.dg-page\s*\{[^}]*max-width:\s*460px/);
+  it('1. .dg-app-shell uses width 100%', () => {
+    expect(CSS_SRC).toMatch(/\.dg-app-shell\s*\{[^}]*width:\s*100%/);
   });
 
-  it('2. .dg-page uses 100dvh (not 100vh)', () => {
-    expect(CSS_SRC).toMatch(/\.dg-page\s*\{[^}]*min-height:\s*100dvh/);
-    expect(CSS_SRC).not.toMatch(/\.dg-page\s*\{[^}]*min-height:\s*100vh/);
+  it('2. .dg-app-shell uses 100dvh (not 100vh)', () => {
+    expect(CSS_SRC).toMatch(/\.dg-app-shell\s*\{[^}]*min-height:\s*100dvh/);
+    expect(CSS_SRC).not.toMatch(/\.dg-app-shell\s*\{[^}]*min-height:\s*100vh/);
   });
 
-  it('3. .dg-page has overflow-x: hidden', () => {
-    expect(CSS_SRC).toMatch(/\.dg-page\s*\{[^}]*overflow-x:\s*hidden/);
+  it('3. .dg-app-shell has overflow-x: hidden', () => {
+    expect(CSS_SRC).toMatch(/\.dg-app-shell\s*\{[^}]*overflow-x:\s*hidden/);
   });
 
-  it('4. .dg-page uses safe-area-inset-bottom', () => {
-    expect(CSS_SRC).toMatch(/\.dg-page\s*\{[^}]*env\(safe-area-inset-bottom\)/);
+  it('4. .dg-mobile-frame uses safe-area-inset-bottom', () => {
+    expect(CSS_SRC).toMatch(/\.dg-mobile-frame\s*\{[^}]*env\(safe-area-inset-bottom\)/);
   });
 
-  it('5. .dg-page uses safe-area-inset-top', () => {
-    expect(CSS_SRC).toMatch(/\.dg-page\s*\{[^}]*env\(safe-area-inset-top\)/);
+  it('5. .dg-mobile-frame uses safe-area-inset-top', () => {
+    expect(CSS_SRC).toMatch(/\.dg-mobile-frame\s*\{[^}]*env\(safe-area-inset-top\)/);
   });
 
   it('6. .app-shell uses 100dvh and max-width <= 460px', () => {
@@ -89,8 +89,8 @@ describe('DEMOGUARD-MOBILE-RESPONSIVE-01: Compact header', () => {
 });
 
 describe('DEMOGUARD-MOBILE-RESPONSIVE-01: Stroop 2x2 grid', () => {
-  it('11. .dg-stroop-grid uses grid-template-columns: repeat(2, 1fr)', () => {
-    expect(CSS_SRC).toMatch(/\.dg-stroop-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*1fr\)/);
+  it('11. .dg-stroop-grid uses grid-template-columns: repeat(2, minmax(0, 1fr))', () => {
+    expect(CSS_SRC).toMatch(/\.dg-stroop-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
   });
 
   it('12. .dg-stroop-grid has gap >= 10px', () => {
@@ -138,16 +138,17 @@ describe('DEMOGUARD-MOBILE-RESPONSIVE-01: N-Back touch-friendly', () => {
 });
 
 describe('DEMOGUARD-MOBILE-RESPONSIVE-01: Digit Span keypad', () => {
-  it('21. .dg-digit-keypad uses grid repeat(5, 1fr)', () => {
-    expect(CSS_SRC).toMatch(/\.dg-digit-keypad\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*1fr\)/);
+  it('21. .dg-digit-keypad uses grid repeat(5, minmax(0, 1fr))', () => {
+    expect(CSS_SRC).toMatch(/\.dg-digit-keypad\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/);
   });
 
   it('22. .dg-digit-key has min-height >= 48px', () => {
     expect(CSS_SRC).toMatch(/\.dg-digit-key\s*\{[^}]*min-height:\s*52px/);
   });
 
-  it('23. .dg-digit-keypad has max-width <= 300px', () => {
-    expect(CSS_SRC).toMatch(/\.dg-digit-keypad\s*\{[^}]*max-width:\s*300px/);
+  it('23. .dg-digit-keypad uses width: 100% (no max-width constraint)', () => {
+    expect(CSS_SRC).toMatch(/\.dg-digit-keypad\s*\{[^}]*width:\s*100%/);
+    expect(CSS_SRC).not.toMatch(/\.dg-digit-keypad\s*\{[^}]*max-width:\s*300px/);
   });
 
   it('24. JSX uses dg-digit-keypad class', () => {
@@ -165,8 +166,8 @@ describe('DEMOGUARD-MOBILE-RESPONSIVE-01: Trail Tap area', () => {
     expect(CSS_SRC).toMatch(/\.dg-trail-area\s*\{[^}]*width:\s*100%/);
   });
 
-  it('27. .dg-trail-area has max-width <= 320px', () => {
-    expect(CSS_SRC).toMatch(/\.dg-trail-area\s*\{[^}]*max-width:\s*320px/);
+  it('27. .dg-trail-area has no max-width constraint (uses 100%)', () => {
+    expect(CSS_SRC).not.toMatch(/\.dg-trail-area\s*\{[^}]*max-width:\s*320px/);
   });
 
   it('28. .dg-trail-area has overflow: hidden', () => {
@@ -344,9 +345,8 @@ describe('DEMOGUARD-MOBILE-RESPONSIVE-01: Desktop enhancement', () => {
     expect(CSS_SRC).toMatch(/@media\s*\(min-width:\s*480px\)/);
   });
 
-  it('62. Desktop media query increases stroop word font-size', () => {
+  it('62. Desktop media query does not change Stroop word font (prevents layout shift)', () => {
     const desktopSection = CSS_SRC.slice(CSS_SRC.indexOf('@media (min-width: 480px)'));
-    expect(desktopSection).toContain('.dg-stroop-word');
-    expect(desktopSection).toMatch(/font-size:\s*44px/);
+    expect(desktopSection).not.toContain('.dg-stroop-word');
   });
 });

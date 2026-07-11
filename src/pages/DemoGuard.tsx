@@ -23,6 +23,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import './demoguard-premium.css';
 import { ROUTES } from '../constants/routes';
+import { useStableMobileViewport, isCognitivePhase } from '../hooks/useStableMobileViewport';
 import { collectDeviceContext } from '../demoguard/collectors/deviceCollector';
 import { collectPermissions } from '../demoguard/collectors/permissionCollector';
 import { computeQuality } from '../demoguard/quality/signalCompleteness';
@@ -1028,8 +1029,11 @@ export function DemoGuard() {
       : `Voice integrity: ${reconciledVocalDiag.vocalStatus} — ${reconciledVocalDiag.reasonSafe}`
     : null;
 
+  const { stableFrameWidth } = useStableMobileViewport(phase);
+
   return (
-    <div className="dg-page">
+    <div className="dg-app-shell" style={{ ['--dg-stable-frame-width' as string]: `${stableFrameWidth}px` }}>
+      <div className="dg-mobile-frame" data-testid="dg-mobile-frame">
       {/* ═══ 1. Hero / Mission Status (compact header) ═══ */}
       <div className="dg-hero" data-testid="dg-hero">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1106,192 +1110,188 @@ export function DemoGuard() {
         </div>
       )}
 
-      {/* Camera result */}
-      {selfieSignal && phase !== 'camera' && phase !== 'idle' && phase !== 'prep' && (
-        <div className="dg-card">
-          <h3 className="dg-card-title"><span className="dg-card-title-icon" />Photo</h3>
-          <div className="dg-row">
-            <span className="dg-row-label">Statut</span>
-            <span className={`dg-badge ${selfieSignal.captured ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{selfieSignal.captured ? 'OK' : 'MANQUANTE'}</span>
-          </div>
+      {/* Compact status row — shown during cognitive and voice phases to prevent layout shift */}
+      {(isCognitivePhase(phase) || phase === 'voice-proof') && (
+        <div className="dg-compact-status-row" data-testid="dg-compact-status-row">
+          <span className={`dg-cs-chip ${selfieSignal?.captured ? 'dg-cs-ok' : 'dg-cs-missing'}`}>Photo {selfieSignal?.captured ? '✓' : '—'}</span>
+          <span className={`dg-cs-chip ${voiceSignal?.recorded ? 'dg-cs-ok' : 'dg-cs-missing'}`}>Micro {voiceSignal?.recorded ? '✓' : '—'}</span>
+          <span className={`dg-cs-chip ${(behaviorSummary?.totalInteractions ?? 0) > 0 ? 'dg-cs-ok' : 'dg-cs-missing'}`}>Touch {(behaviorSummary?.totalInteractions ?? 0) > 0 ? '✓' : '—'}</span>
         </div>
       )}
 
-      {/* ═══ Cognitive Battery ═══ */}
-
-      {/* Cognitive Reflex (phase: cognitive-intro) → "Réflexe" */}
-      {phase === 'cognitive-intro' && (
-        <div className="dg-card dg-challenge-area">
-          <h3 className="dg-challenge-title">Test 1 — Réflexe</h3>
-          <p className="dg-challenge-sub">Essai {cogReflexRound + 1} sur {COG_REFLEX_ROUNDS} — Touche dès que l'écran devient vert</p>
-          <div className="dg-round-dots">
-            {Array.from({ length: COG_REFLEX_ROUNDS }).map((_, i) => (
-              <div key={i} className={`dg-round-dot ${i < cogReflexResults.length ? 'done' : i === cogReflexRound ? 'current' : ''}`} />
-            ))}
-          </div>
-          <button
-            onClick={handleCogReflexTap}
-            className="dg-reaction-btn"
-            style={{ background: cogReflexPhase === 'go' ? '#10b981' : cogReflexPhase === 'wait' ? '#ef4444' : cogReflexPhase === 'too_early' ? '#f59e0b' : '#06b6d4' }}
-          >
-            {cogReflexPhase === 'ready' ? 'TAP POUR COMMENCER' : cogReflexPhase === 'wait' ? 'ATTENDS...' : cogReflexPhase === 'go' ? 'TAP !' : cogReflexPhase === 'too_early' ? 'TROP TÔT' : 'Terminé'}
-          </button>
-          {cogLastReflexMs !== null && cogReflexPhase === 'ready' && (
-            <p style={{ marginTop: 12, fontSize: 14, color: 'var(--dg-green)' }}>Dernier: {cogLastReflexMs} ms</p>
-          )}
-          <div style={{ marginTop: 16 }}>
-            <button onClick={handleSkipCogReflex} className="dg-btn dg-btn-secondary">Passer</button>
-          </div>
-        </div>
-      )}
-
-      {/* Cognitive Stroop → "Couleurs" */}
-      {phase === 'cognitive-stroop' && stroopTrials.length > 0 && (
-        <div className="dg-card dg-challenge-area" data-testid="dg-stroop-card">
-          <h3 className="dg-challenge-title">Test 2 — Couleurs</h3>
-          {stroopPracticeMode ? (
+      {/* ═══ Cognitive Battery — single stable test card for all cognitive phases ═══ */}
+      {isCognitivePhase(phase) && (
+        <div className="dg-test-card" data-testid="dg-test-card">
+          {phase === 'cognitive-intro' && (
             <>
-              <p className="dg-challenge-sub">Touche la <strong>couleur du texte</strong>, pas le mot écrit. Exemple : si le mot « ROUGE » est écrit en bleu, touche « Bleu ».</p>
-              <p className="dg-challenge-sub" style={{ opacity: 0.7 }}>Essai {stroopPracticeIndex + 1} / {stroopPracticeTrials.length}</p>
-              <div className="dg-stroop-word" style={{ color: stroopPracticeTrials[stroopPracticeIndex].displayColor === 'red' ? '#ef4444' : stroopPracticeTrials[stroopPracticeIndex].displayColor === 'blue' ? '#3b82f6' : stroopPracticeTrials[stroopPracticeIndex].displayColor === 'green' ? '#22c55e' : '#eab308' }}>
-                {stroopPracticeTrials[stroopPracticeIndex].word.toUpperCase()}
-              </div>
-              <div className="dg-stroop-grid" data-testid="dg-stroop-grid">
-                {STROOP_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => handleStroopPracticeSelect(color)}
-                    className="dg-stroop-btn"
-                    style={{ background: color === 'red' ? '#ef4444' : color === 'blue' ? '#3b82f6' : color === 'green' ? '#22c55e' : '#eab308' }}
-                  >
-                    {color === 'red' ? 'Rouge' : color === 'blue' ? 'Bleu' : color === 'green' ? 'Vert' : 'Jaune'}
-                  </button>
+              <h3 className="dg-challenge-title">Test 1 — Réflexe</h3>
+              <p className="dg-challenge-sub">Essai {cogReflexRound + 1} sur {COG_REFLEX_ROUNDS} — Touche dès que l'écran devient vert</p>
+              <div className="dg-round-dots">
+                {Array.from({ length: COG_REFLEX_ROUNDS }).map((_, i) => (
+                  <div key={i} className={`dg-round-dot ${i < cogReflexResults.length ? 'done' : i === cogReflexRound ? 'current' : ''}`} />
                 ))}
               </div>
-</>
-          ) : stroopIndex < stroopTrials.length ? (
-            <>
-              <p className="dg-challenge-sub">Touche la <strong>couleur du texte</strong>, pas le mot écrit.</p>
-              <p className="dg-challenge-sub" style={{ opacity: 0.7 }}>Essai {stroopIndex + 1} / {stroopTrials.length}</p>
-              <div className="dg-stroop-word" style={{ color: stroopTrials[stroopIndex].displayColor === 'red' ? '#ef4444' : stroopTrials[stroopIndex].displayColor === 'blue' ? '#3b82f6' : stroopTrials[stroopIndex].displayColor === 'green' ? '#22c55e' : '#eab308' }}>
-                {stroopTrials[stroopIndex].word.toUpperCase()}
+              <button
+                onClick={handleCogReflexTap}
+                className="dg-reaction-btn"
+                style={{ background: cogReflexPhase === 'go' ? '#10b981' : cogReflexPhase === 'wait' ? '#ef4444' : cogReflexPhase === 'too_early' ? '#f59e0b' : '#06b6d4' }}
+              >
+                {cogReflexPhase === 'ready' ? 'TAP POUR COMMENCER' : cogReflexPhase === 'wait' ? 'ATTENDS...' : cogReflexPhase === 'go' ? 'TAP !' : cogReflexPhase === 'too_early' ? 'TROP TÔT' : 'Terminé'}
+              </button>
+              {cogLastReflexMs !== null && cogReflexPhase === 'ready' && (
+                <p style={{ marginTop: 12, fontSize: 14, color: 'var(--dg-green)' }}>Dernier: {cogLastReflexMs} ms</p>
+              )}
+              <div style={{ marginTop: 16 }}>
+                <button onClick={handleSkipCogReflex} className="dg-btn dg-btn-secondary">Passer</button>
               </div>
-              <div className="dg-stroop-grid" data-testid="dg-stroop-grid">
-                {STROOP_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => handleStroopSelect(color)}
-                    className="dg-stroop-btn"
-                    style={{ background: color === 'red' ? '#ef4444' : color === 'blue' ? '#3b82f6' : color === 'green' ? '#22c55e' : '#eab308' }}
-                  >
-                    {color === 'red' ? 'Rouge' : color === 'blue' ? 'Bleu' : color === 'green' ? 'Vert' : 'Jaune'}
-                  </button>
-                ))}
-              </div>
-</>
-          ) : null}
-        </div>
-      )}
-
-      {/* Cognitive Digit Span → "Mémoire courte" */}
-      {phase === 'cognitive-digit-span' && digitSpanTrials.length > 0 && digitSpanIndex < digitSpanTrials.length && (
-        <div className="dg-card dg-challenge-area" data-testid="dg-digit-span-card">
-          <h3 className="dg-challenge-title">Test 3 — Mémoire courte</h3>
-          <p className="dg-challenge-sub">Essai {digitSpanIndex + 1} / {digitSpanTrials.length} — {digitSpanTrials[digitSpanIndex].span} chiffres</p>
-          {digitSpanShowDigits ? (
-            <div className="dg-digit-display">{digitSpanTrials[digitSpanIndex].sequence.join(' ')}</div>
-          ) : (
-            <>
-              <p className="dg-challenge-sub">Saisis les chiffres avec les boutons :</p>
-              <div className="dg-digit-input-display" style={{ fontSize: 24, fontWeight: 700, color: 'var(--dg-text-bright)', textAlign: 'center', marginBottom: 12, minHeight: 36 }}>
-                {digitSpanInput || '—'}
-              </div>
-              <div className="dg-digit-keypad" data-testid="dg-digit-keypad">
-                {['1','2','3','4','5','6','7','8','9','0'].map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => {
-                      recordDigitSpanKey(false);
-                      setDigitSpanInput((v) => v + d);
-                    }}
-                    className="dg-digit-key"
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
-                <button
-                  onClick={() => {
-                    recordDigitSpanKey(true);
-                    setDigitSpanInput((v) => v.slice(0, -1));
-                  }}
-                  className="dg-btn dg-btn-secondary"
-                >
-                  ⌫
-                </button>
-                <button onClick={handleDigitSpanSubmit} disabled={!digitSpanInput} className="dg-btn dg-btn-primary">Valider</button>
-</div>
             </>
           )}
-        </div>
-      )}
 
-      {/* Cognitive N-Back → "Comparaison" */}
-      {phase === 'cognitive-nback' && nbackTrials.length > 0 && (
-        <div className="dg-card dg-challenge-area" data-testid="dg-nback-card">
-          <h3 className="dg-challenge-title">Test 4 — Comparaison</h3>
-          {nbackPracticeMode ? (
-            <>
-              <p className="dg-challenge-sub">Essai {nbackPracticeIndex + 1} / {nbackPracticeTrials.length} — Ce symbole est-il le même que le précédent ?</p>
-              <div className="dg-nback-letter">{nbackPracticeTrials[nbackPracticeIndex].letter}</div>
-              <div className="dg-nback-btns" data-testid="dg-nback-btns">
-                <button onClick={() => handleNBackPracticeResponse(true)} className="dg-nback-btn" style={{ background: '#22c55e' }}>OUI</button>
-                <button onClick={() => handleNBackPracticeResponse(false)} className="dg-nback-btn" style={{ background: '#6b7280' }}>NON</button>
-              </div>
-</>
-          ) : nbackIndex < nbackTrials.length ? (
-            <>
-              <p className="dg-challenge-sub">Essai {nbackIndex + 1} / {nbackTrials.length} — Même symbole que le précédent ?</p>
-              <div className="dg-nback-letter">{nbackTrials[nbackIndex].letter}</div>
-              <div className="dg-nback-btns" data-testid="dg-nback-btns">
-                <button onClick={() => handleNBackResponse(true)} className="dg-nback-btn" style={{ background: '#22c55e' }}>OUI</button>
-                <button onClick={() => handleNBackResponse(false)} className="dg-nback-btn" style={{ background: '#6b7280' }}>NON</button>
-              </div>
-</>
-          ) : null}
-        </div>
-      )}
+          {phase === 'cognitive-stroop' && stroopTrials.length > 0 && (
+            <div data-testid="dg-stroop-card">
+              <h3 className="dg-challenge-title">Test 2 — Couleurs</h3>
+              {stroopPracticeMode ? (
+                <>
+                  <p className="dg-challenge-sub">Touche la <strong>couleur du texte</strong>, pas le mot écrit. Exemple : si le mot « ROUGE » est écrit en bleu, touche « Bleu ».</p>
+                  <p className="dg-challenge-sub" style={{ opacity: 0.7 }}>Essai {stroopPracticeIndex + 1} / {stroopPracticeTrials.length}</p>
+                  <div className="dg-stroop-word" style={{ color: stroopPracticeTrials[stroopPracticeIndex].displayColor === 'red' ? '#ef4444' : stroopPracticeTrials[stroopPracticeIndex].displayColor === 'blue' ? '#3b82f6' : stroopPracticeTrials[stroopPracticeIndex].displayColor === 'green' ? '#22c55e' : '#eab308' }}>
+                    {stroopPracticeTrials[stroopPracticeIndex].word.toUpperCase()}
+                  </div>
+                  <div className="dg-stroop-grid" data-testid="dg-stroop-grid">
+                    {STROOP_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => handleStroopPracticeSelect(color)}
+                        className="dg-stroop-btn"
+                        style={{ background: color === 'red' ? '#ef4444' : color === 'blue' ? '#3b82f6' : color === 'green' ? '#22c55e' : '#eab308' }}
+                      >
+                        {color === 'red' ? 'Rouge' : color === 'blue' ? 'Bleu' : color === 'green' ? 'Vert' : 'Jaune'}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : stroopIndex < stroopTrials.length ? (
+                <>
+                  <p className="dg-challenge-sub">Touche la <strong>couleur du texte</strong>, pas le mot écrit.</p>
+                  <p className="dg-challenge-sub" style={{ opacity: 0.7 }}>Essai {stroopIndex + 1} / {stroopTrials.length}</p>
+                  <div className="dg-stroop-word" style={{ color: stroopTrials[stroopIndex].displayColor === 'red' ? '#ef4444' : stroopTrials[stroopIndex].displayColor === 'blue' ? '#3b82f6' : stroopTrials[stroopIndex].displayColor === 'green' ? '#22c55e' : '#eab308' }}>
+                    {stroopTrials[stroopIndex].word.toUpperCase()}
+                  </div>
+                  <div className="dg-stroop-grid" data-testid="dg-stroop-grid">
+                    {STROOP_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => handleStroopSelect(color)}
+                        className="dg-stroop-btn"
+                        style={{ background: color === 'red' ? '#ef4444' : color === 'blue' ? '#3b82f6' : color === 'green' ? '#22c55e' : '#eab308' }}
+                      >
+                        {color === 'red' ? 'Rouge' : color === 'blue' ? 'Bleu' : color === 'green' ? 'Vert' : 'Jaune'}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          )}
 
-      {/* Cognitive Trail Tap → "Chemin" */}
-      {phase === 'cognitive-trail-tap' && trailNodes.length > 0 && (
-        <div className="dg-card dg-challenge-area" data-testid="dg-trail-tap-card">
-          <h3 className="dg-challenge-title">Test 5 — Chemin</h3>
-          <p className="dg-challenge-sub">Touche les points dans l'ordre 1 → {trailNodes.length}</p>
-          <div className="dg-trail-area" data-testid="dg-trail-area" ref={trailAreaRef}>
-            {trailNodes.map((node) => {
-              const radius = computeNodeRadius(trailAreaSize.w || 300);
-              const size = radius * 2;
-              return (
-                <button
-                  key={node.id}
-                  onClick={() => handleTrailTap(node.id)}
-                  className="dg-trail-node"
-                  style={{
-                    left: node.x - radius,
-                    top: node.y - radius,
-                    width: size,
-                    height: size,
-                    borderRadius: '50%',
-                  }}
-                  data-testid={`dg-trail-node-${node.id}`}
-                >
-                  {node.id}
-                </button>
-              );
-            })}
-          </div>
-</div>
+          {phase === 'cognitive-digit-span' && digitSpanTrials.length > 0 && digitSpanIndex < digitSpanTrials.length && (
+            <div data-testid="dg-digit-span-card">
+              <h3 className="dg-challenge-title">Test 3 — Mémoire courte</h3>
+              <p className="dg-challenge-sub">Essai {digitSpanIndex + 1} / {digitSpanTrials.length} — {digitSpanTrials[digitSpanIndex].span} chiffres</p>
+              {digitSpanShowDigits ? (
+                <div className="dg-digit-display">{digitSpanTrials[digitSpanIndex].sequence.join(' ')}</div>
+              ) : (
+                <>
+                  <p className="dg-challenge-sub">Saisis les chiffres avec les boutons :</p>
+                  <div className="dg-digit-input-display" style={{ fontSize: 24, fontWeight: 700, color: 'var(--dg-text-bright)', textAlign: 'center', marginBottom: 12, minHeight: 36 }}>
+                    {digitSpanInput || '—'}
+                  </div>
+                  <div className="dg-digit-keypad" data-testid="dg-digit-keypad">
+                    {['1','2','3','4','5','6','7','8','9','0'].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => {
+                          recordDigitSpanKey(false);
+                          setDigitSpanInput((v) => v + d);
+                        }}
+                        className="dg-digit-key"
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
+                    <button
+                      onClick={() => {
+                        recordDigitSpanKey(true);
+                        setDigitSpanInput((v) => v.slice(0, -1));
+                      }}
+                      className="dg-btn dg-btn-secondary"
+                    >
+                      ⌫
+                    </button>
+                    <button onClick={handleDigitSpanSubmit} disabled={!digitSpanInput} className="dg-btn dg-btn-primary">Valider</button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {phase === 'cognitive-nback' && nbackTrials.length > 0 && (
+            <div data-testid="dg-nback-card">
+              <h3 className="dg-challenge-title">Test 4 — Comparaison</h3>
+              {nbackPracticeMode ? (
+                <>
+                  <p className="dg-challenge-sub">Essai {nbackPracticeIndex + 1} / {nbackPracticeTrials.length} — Ce symbole est-il le même que le précédent ?</p>
+                  <div className="dg-nback-letter">{nbackPracticeTrials[nbackPracticeIndex].letter}</div>
+                  <div className="dg-nback-btns" data-testid="dg-nback-btns">
+                    <button onClick={() => handleNBackPracticeResponse(true)} className="dg-nback-btn" style={{ background: '#22c55e' }}>OUI</button>
+                    <button onClick={() => handleNBackPracticeResponse(false)} className="dg-nback-btn" style={{ background: '#6b7280' }}>NON</button>
+                  </div>
+                </>
+              ) : nbackIndex < nbackTrials.length ? (
+                <>
+                  <p className="dg-challenge-sub">Essai {nbackIndex + 1} / {nbackTrials.length} — Même symbole que le précédent ?</p>
+                  <div className="dg-nback-letter">{nbackTrials[nbackIndex].letter}</div>
+                  <div className="dg-nback-btns" data-testid="dg-nback-btns">
+                    <button onClick={() => handleNBackResponse(true)} className="dg-nback-btn" style={{ background: '#22c55e' }}>OUI</button>
+                    <button onClick={() => handleNBackResponse(false)} className="dg-nback-btn" style={{ background: '#6b7280' }}>NON</button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          )}
+
+          {phase === 'cognitive-trail-tap' && trailNodes.length > 0 && (
+            <div data-testid="dg-trail-tap-card">
+              <h3 className="dg-challenge-title">Test 5 — Chemin</h3>
+              <p className="dg-challenge-sub">Touche les points dans l'ordre 1 → {trailNodes.length}</p>
+              <div className="dg-trail-area" data-testid="dg-trail-area" ref={trailAreaRef}>
+                {trailNodes.map((node) => {
+                  const radius = computeNodeRadius(trailAreaSize.w || 300);
+                  const size = radius * 2;
+                  return (
+                    <button
+                      key={node.id}
+                      onClick={() => handleTrailTap(node.id)}
+                      className="dg-trail-node"
+                      style={{
+                        left: node.x - radius,
+                        top: node.y - radius,
+                        width: size,
+                        height: size,
+                        borderRadius: '50%',
+                      }}
+                      data-testid={`dg-trail-node-${node.id}`}
+                    >
+                      {node.id}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Voice proof (single capture) */}
@@ -1688,6 +1688,7 @@ export function DemoGuard() {
           ) : null}
         </div>
       </div>
+    </div>
     </div>
   );
 }

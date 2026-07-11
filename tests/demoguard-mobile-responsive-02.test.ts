@@ -184,8 +184,8 @@ describe('DEMOGUARD-MOBILE-RESPONSIVE-02: computeTrailTapLayout clamping', () =>
 // ─── CSS structural tests ───────────────────────────────────────────
 
 describe('DEMOGUARD-MOBILE-RESPONSIVE-02: CSS structure', () => {
-  it('13. Couleurs buttons render 2x2 grid (grid-template-columns: repeat(2, 1fr))', () => {
-    expect(CSS_SRC).toMatch(/\.dg-stroop-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*1fr\)/);
+  it('13. Couleurs buttons render 2x2 grid (grid-template-columns: repeat(2, minmax(0, 1fr)))', () => {
+    expect(CSS_SRC).toMatch(/\.dg-stroop-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
   });
 
   it('14. Couleurs buttons min-height 64px', () => {
@@ -201,8 +201,8 @@ describe('DEMOGUARD-MOBILE-RESPONSIVE-02: CSS structure', () => {
     expect(CSS_SRC).toMatch(/\.dg-trail-area\s*\{[^}]*height:\s*clamp\(/);
   });
 
-  it('18b. Trail area does NOT use fixed height', () => {
-    expect(CSS_SRC).not.toMatch(/\.dg-trail-area\s*\{[^}]*height:\s*\d+px;/);
+  it('18b. Trail area does NOT use fixed height (uses clamp)', () => {
+    expect(CSS_SRC).not.toMatch(/\.dg-trail-area\s*\{[^}]*?(?<![-\w])height:\s*\d+px/);
   });
 });
 

@@ -26,6 +26,10 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+img, video, canvas, svg {
+  max-width: 100%;
+}
+
 html, body, #root {
   margin: 0;
   padding: 0;

@@ -1,5 +1,5 @@
-/* DemoGuard Premium Cyber-Science UX — Mobile-First Responsive */
-.dg-page {
+/* DemoGuard Premium Cyber-Science UX — Stable Mobile App Shell */
+.dg-app-shell {
   --dg-bg: #0a0e1a;
   --dg-surface: rgba(15, 23, 42, 0.85);
   --dg-surface-hover: rgba(30, 41, 59, 0.9);
@@ -15,19 +15,30 @@
   --dg-amber: #f59e0b;
   --dg-red: #ef4444;
   --dg-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
-  flex: 1;
+  width: 100%;
+  min-height: 100dvh;
+  overflow-x: hidden;
   display: flex;
-  flex-direction: column;
-  padding: 12px;
-  gap: 10px;
-  max-width: 460px;
-  margin: 0 auto;
+  justify-content: center;
+  align-items: stretch;
   background: var(--dg-bg);
   color: var(--dg-text);
-  min-height: 100dvh;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.dg-mobile-frame {
+  width: min(100%, var(--dg-stable-frame-width, 430px));
+  max-width: 430px;
+  min-width: 0;
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
   padding-top: calc(8px + env(safe-area-inset-top));
-  padding-bottom: calc(12px + env(safe-area-inset-bottom));
-  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
 }
 
 .dg-hero {
@@ -104,6 +115,55 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dg-test-card {
+  background: var(--dg-surface);
+  border: 1px solid var(--dg-border);
+  border-radius: 12px;
+  padding: 14px;
+  min-height: clamp(360px, calc(100dvh - 230px), 560px);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.dg-compact-status-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  height: 36px;
+  flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.dg-cs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.dg-cs-ok {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--dg-green);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.dg-cs-missing {
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--dg-text-dim);
+  border: 1px solid rgba(100, 116, 139, 0.15);
 }
 
 .dg-card {
@@ -508,18 +568,19 @@
 }
 
 .dg-stroop-word {
-  font-size: 36px;
+  font-size: clamp(34px, 11vw, 46px);
   font-weight: 900;
   margin-bottom: 12px;
   line-height: 1.1;
   text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .dg-stroop-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  max-width: 320px;
+  width: 100%;
   margin: 0 auto;
 }
 
@@ -553,14 +614,16 @@
 .dg-trail-area {
   position: relative;
   width: 100%;
-  max-width: 320px;
-  height: clamp(280px, 45vh, 380px);
+  height: clamp(300px, calc(100dvh - 320px), 420px);
+  min-height: 300px;
+  max-height: 420px;
   margin: 0 auto;
   border: 1px solid var(--dg-border);
   border-radius: 12px;
   background: rgba(15, 23, 42, 0.6);
   overflow: hidden;
   touch-action: manipulation;
+  box-sizing: border-box;
 }
 
 .dg-trail-node {
@@ -609,9 +672,9 @@
 
 .dg-digit-keypad {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
-  max-width: 300px;
+  width: 100%;
   margin: 0 auto;
 }
 
@@ -675,7 +738,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-  .dg-page {
+  .dg-app-shell {
     --dg-bg: #f8fafc;
     --dg-surface: rgba(255, 255, 255, 0.9);
     --dg-surface-hover: rgba(241, 245, 249, 0.95);
@@ -694,14 +757,12 @@
 }
 
 @media (min-width: 480px) {
-  .dg-page {
-    padding: 16px;
+  .dg-mobile-frame {
     gap: 12px;
   }
   .dg-hero { padding: 14px 16px; }
   .dg-hero-title { font-size: 18px; }
   .dg-card { padding: 16px; }
-  .dg-stroop-word { font-size: 44px; }
   .dg-nback-letter { font-size: 64px; }
   .dg-digit-display { font-size: 40px; }
 }
