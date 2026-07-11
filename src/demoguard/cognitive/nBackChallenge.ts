@@ -11,6 +11,7 @@
 import type { NBackSignal, CognitiveQuality } from './cognitiveTypes';
 
 export const NBACK_TRIALS = 8;
+export const NBACK_PRACTICE_TRIALS = 3;
 export const NBACK_TARGET_RATIO = 0.3;
 export const NBACK_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
 export type NBackLetter = (typeof NBACK_LETTERS)[number];
@@ -18,6 +19,7 @@ export type NBackLetter = (typeof NBACK_LETTERS)[number];
 export interface NBackTrialConfig {
   letter: NBackLetter;
   isTarget: boolean;
+  isPractice?: boolean;
 }
 
 export interface NBackTrialResult {
@@ -73,6 +75,14 @@ export function generateNBackTrials(count: number = NBACK_TRIALS): NBackTrialCon
   return trials;
 }
 
+export function generateNBackPracticeTrials(): NBackTrialConfig[] {
+  return [
+    { letter: 'C', isTarget: false, isPractice: true },
+    { letter: 'C', isTarget: true, isPractice: true },
+    { letter: 'F', isTarget: false, isPractice: true },
+  ];
+}
+
 export function evaluateNBackTrial(
   config: NBackTrialConfig,
   userSaidMatch: boolean,
@@ -95,7 +105,8 @@ export function evaluateNBackTrial(
 }
 
 export function computeNBackResult(results: NBackTrialResult[]): NBackSignal {
-  if (results.length === 0) {
+  const scoredResults = results.filter((r) => !r.config.isPractice);
+  if (scoredResults.length === 0) {
     return {
       trials: 0,
       targets: 0,
@@ -108,14 +119,14 @@ export function computeNBackResult(results: NBackTrialResult[]): NBackSignal {
     };
   }
 
-  const targets = results.filter((r) => r.config.isTarget);
-  const hits = results.filter((r) => r.isHit).length;
-  const falsePositives = results.filter((r) => r.isFalsePositive).length;
-  const misses = results.filter((r) => r.isMiss).length;
-  const correctRejections = results.filter((r) => r.isCorrectRejection).length;
+  const targets = scoredResults.filter((r) => r.config.isTarget);
+  const hits = scoredResults.filter((r) => r.isHit).length;
+  const falsePositives = scoredResults.filter((r) => r.isFalsePositive).length;
+  const misses = scoredResults.filter((r) => r.isMiss).length;
+  const correctRejections = scoredResults.filter((r) => r.isCorrectRejection).length;
 
-  const accuracy = (hits + correctRejections) / results.length;
-  const avgResponse = results.reduce((s, r) => s + r.response_ms, 0) / results.length;
+  const accuracy = (hits + correctRejections) / scoredResults.length;
+  const avgResponse = scoredResults.reduce((s, r) => s + r.response_ms, 0) / scoredResults.length;
 
   let quality: CognitiveQuality = 'ok';
   if (accuracy < 0.4) {
@@ -125,7 +136,7 @@ export function computeNBackResult(results: NBackTrialResult[]): NBackSignal {
   }
 
   return {
-    trials: results.length,
+    trials: scoredResults.length,
     targets: targets.length,
     hits,
     false_positives: falsePositives,

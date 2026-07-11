@@ -37,9 +37,8 @@ export function generateChallengeId(): string {
   return `dg_voice_${code}`;
 }
 
-export function generateChallengePhrase(challengeId: string): string {
-  const code = challengeId.replace('dg_voice_', '');
-  return `Code HCS ${code} — validation mobile`;
+export function generateChallengePhrase(_challengeId: string): string {
+  return 'Je suis présent et je valide ce contrôle.';
 }
 
 export async function requestMicrophone(): Promise<MediaStream> {

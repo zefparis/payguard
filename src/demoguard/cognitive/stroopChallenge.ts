@@ -11,6 +11,7 @@
 import type { StroopSignal, CognitiveQuality } from './cognitiveTypes';
 
 export const STROOP_TRIALS = 6;
+export const STROOP_PRACTICE_TRIALS = 2;
 export const STROOP_MIN_CONFLICT = 3;
 
 export const STROOP_COLORS = ['red', 'blue', 'green', 'yellow'] as const;
@@ -20,6 +21,7 @@ export interface StroopTrialConfig {
   word: StroopColor;
   displayColor: StroopColor;
   isConflict: boolean;
+  isPractice?: boolean;
 }
 
 export interface StroopTrialResult {
@@ -79,8 +81,16 @@ export function generateStroopTrials(count: number = STROOP_TRIALS): StroopTrial
   return trials;
 }
 
+export function generateStroopPracticeTrials(): StroopTrialConfig[] {
+  return [
+    { word: 'red', displayColor: 'blue', isConflict: true, isPractice: true },
+    { word: 'green', displayColor: 'red', isConflict: true, isPractice: true },
+  ];
+}
+
 export function computeStroopResult(results: StroopTrialResult[]): StroopSignal {
-  if (results.length === 0) {
+  const scoredResults = results.filter((r) => !r.config.isPractice);
+  if (scoredResults.length === 0) {
     return {
       trials: 0,
       conflict_trials: 0,
@@ -92,13 +102,13 @@ export function computeStroopResult(results: StroopTrialResult[]): StroopSignal 
     };
   }
 
-  const correct = results.filter((r) => r.correct);
-  const errors = results.filter((r) => !r.correct);
-  const conflictTrials = results.filter((r) => r.config.isConflict);
-  const nonConflictTrials = results.filter((r) => !r.config.isConflict);
+  const correct = scoredResults.filter((r) => r.correct);
+  const errors = scoredResults.filter((r) => !r.correct);
+  const conflictTrials = scoredResults.filter((r) => r.config.isConflict);
+  const nonConflictTrials = scoredResults.filter((r) => !r.config.isConflict);
 
-  const accuracy = correct.length / results.length;
-  const avgResponse = results.reduce((s, r) => s + r.response_ms, 0) / results.length;
+  const accuracy = correct.length / scoredResults.length;
+  const avgResponse = scoredResults.reduce((s, r) => s + r.response_ms, 0) / scoredResults.length;
 
   const conflictAvg = conflictTrials.length > 0
     ? conflictTrials.reduce((s, r) => s + r.response_ms, 0) / conflictTrials.length
@@ -116,7 +126,7 @@ export function computeStroopResult(results: StroopTrialResult[]): StroopSignal 
   }
 
   return {
-    trials: results.length,
+    trials: scoredResults.length,
     conflict_trials: conflictTrials.length,
     accuracy: Math.round(accuracy * 100) / 100,
     avg_response_ms: Math.round(avgResponse),
