@@ -274,6 +274,7 @@ export function DemoGuard() {
   const [stroopIndex, setStroopIndex] = useState(0);
   const [stroopResults, setStroopResults] = useState<StroopTrialResult[]>([]);
   const stroopStartRef = useRef<number>(0);
+  const stroopAdvancingRef = useRef(false);
 
   // Cognitive Digit Span state
   const [digitSpanTrials, setDigitSpanTrials] = useState<DigitSpanTrialConfig[]>([]);
@@ -287,6 +288,7 @@ export function DemoGuard() {
   const [nbackIndex, setNbackIndex] = useState(0);
   const [nbackResults, setNbackResults] = useState<NBackTrialResult[]>([]);
   const nbackStartRef = useRef<number>(0);
+  const nbackAdvancingRef = useRef(false);
 
   // Cognitive Trail Tap state
   const [trailNodes, setTrailNodes] = useState<TrailTapNode[]>([]);
@@ -297,13 +299,11 @@ export function DemoGuard() {
   const [stroopPracticeTrials, setStroopPracticeTrials] = useState<StroopTrialConfig[]>([]);
   const [stroopPracticeIndex, setStroopPracticeIndex] = useState(0);
   const [stroopPracticeMode, setStroopPracticeMode] = useState(false);
-  const [stroopPracticeFeedback, setStroopPracticeFeedback] = useState<string | null>(null);
 
   // N-Back practice state
   const [nbackPracticeTrials, setNbackPracticeTrials] = useState<NBackTrialConfig[]>([]);
   const [nbackPracticeIndex, setNbackPracticeIndex] = useState(0);
   const [nbackPracticeMode, setNbackPracticeMode] = useState(false);
-  const [nbackPracticeFeedback, setNbackPracticeFeedback] = useState<string | null>(null);
 
   // ── Device + permissions ──
   const handleStart = useCallback(async () => {
@@ -511,6 +511,10 @@ export function DemoGuard() {
       recordReflexTap(0, true);
       return;
     }
+    if (cogReflexPhase === 'too_early') {
+      setCogReflexPhase('ready');
+      return;
+    }
     if (cogReflexPhase === 'go') {
       const ms = performance.now() - cogGoAtRef.current;
       const round = evaluateReflexRound(ms);
@@ -526,7 +530,6 @@ export function DemoGuard() {
         setStroopPracticeTrials(generateStroopPracticeTrials());
         setStroopPracticeIndex(0);
         setStroopPracticeMode(true);
-        setStroopPracticeFeedback(null);
         setStroopTrials(generateStroopTrials(6));
         setStroopIndex(0);
         setStroopResults([]);
@@ -543,7 +546,6 @@ export function DemoGuard() {
     setStroopPracticeTrials(generateStroopPracticeTrials());
     setStroopPracticeIndex(0);
     setStroopPracticeMode(true);
-    setStroopPracticeFeedback(null);
     setStroopTrials(generateStroopTrials(6));
     setStroopIndex(0);
     setStroopResults([]);
@@ -556,23 +558,18 @@ export function DemoGuard() {
     const trial = stroopPracticeTrials[stroopPracticeIndex];
     const correct = color === trial.displayColor;
     recordStroopSelection(color, correct, 0, false);
-    setStroopPracticeFeedback(correct ? 'Compris ! Continue.' : 'Non — appuie sur la couleur, pas le mot.');
     if (stroopPracticeIndex + 1 >= stroopPracticeTrials.length) {
-      window.setTimeout(() => {
-        setStroopPracticeMode(false);
-        setStroopPracticeFeedback(null);
-        stroopStartRef.current = performance.now();
-      }, 1500);
+      setStroopPracticeMode(false);
+      stroopStartRef.current = performance.now();
     } else {
-      window.setTimeout(() => {
-        setStroopPracticeIndex((i) => i + 1);
-        setStroopPracticeFeedback(null);
-      }, 1200);
+      setStroopPracticeIndex((i) => i + 1);
     }
   }, [stroopPracticeMode, stroopPracticeIndex, stroopPracticeTrials]);
 
   const handleStroopSelect = useCallback((color: StroopColor) => {
     if (stroopPracticeMode || phase !== 'cognitive-stroop' || stroopIndex >= stroopTrials.length) return;
+    if (stroopAdvancingRef.current) return;
+    stroopAdvancingRef.current = true;
     if (stroopIndex === 0) recordTaskStart('stroop');
     const rt = performance.now() - stroopStartRef.current;
     const trial = stroopTrials[stroopIndex];
@@ -598,17 +595,8 @@ export function DemoGuard() {
       setStroopIndex((i) => i + 1);
       stroopStartRef.current = performance.now();
     }
+    window.setTimeout(() => { stroopAdvancingRef.current = false; }, 150);
   }, [phase, stroopIndex, stroopTrials, stroopResults]);
-
-  const handleSkipStroop = useCallback(() => {
-    setCogStroopSignal(null);
-    setPhase('cognitive-digit-span');
-    setDigitSpanTrials(generateDigitSpanTrials(3));
-    setDigitSpanIndex(0);
-    setDigitSpanInput('');
-    setDigitSpanResults([]);
-    setDigitSpanShowDigits(true);
-  }, []);
 
   // ── Cognitive Digit Span ──
   useEffect(() => {
@@ -634,7 +622,6 @@ export function DemoGuard() {
       setNbackPracticeTrials(generateNBackPracticeTrials());
       setNbackPracticeIndex(0);
       setNbackPracticeMode(true);
-      setNbackPracticeFeedback(null);
       setNbackTrials(generateNBackTrials(8));
       setNbackIndex(0);
       setNbackResults([]);
@@ -645,18 +632,6 @@ export function DemoGuard() {
     }
   }, [phase, digitSpanIndex, digitSpanTrials, digitSpanInput, digitSpanResults]);
 
-  const handleSkipDigitSpan = useCallback(() => {
-    setCogDigitSpanSignal(null);
-    setPhase('cognitive-nback');
-    setNbackPracticeTrials(generateNBackPracticeTrials());
-    setNbackPracticeIndex(0);
-    setNbackPracticeMode(true);
-    setNbackPracticeFeedback(null);
-    setNbackTrials(generateNBackTrials(8));
-    setNbackIndex(0);
-    setNbackResults([]);
-  }, []);
-
   // ── Cognitive N-Back ──
   const handleNBackPracticeResponse = useCallback((saidMatch: boolean) => {
     if (!nbackPracticeMode || nbackPracticeIndex >= nbackPracticeTrials.length) return;
@@ -664,23 +639,18 @@ export function DemoGuard() {
     const trial = nbackPracticeTrials[nbackPracticeIndex];
     const correct = (trial.isTarget && saidMatch) || (!trial.isTarget && !saidMatch);
     recordNBackDecision(correct, 0);
-    setNbackPracticeFeedback(correct ? 'Compris ! Continue.' : trial.isTarget ? 'C\'était OUI — même symbole.' : 'C\'était NON — symbole différent.');
     if (nbackPracticeIndex + 1 >= nbackPracticeTrials.length) {
-      window.setTimeout(() => {
-        setNbackPracticeMode(false);
-        setNbackPracticeFeedback(null);
-        nbackStartRef.current = performance.now();
-      }, 1500);
+      setNbackPracticeMode(false);
+      nbackStartRef.current = performance.now();
     } else {
-      window.setTimeout(() => {
-        setNbackPracticeIndex((i) => i + 1);
-        setNbackPracticeFeedback(null);
-      }, 1200);
+      setNbackPracticeIndex((i) => i + 1);
     }
   }, [nbackPracticeMode, nbackPracticeIndex, nbackPracticeTrials]);
 
   const handleNBackResponse = useCallback((saidMatch: boolean) => {
     if (nbackPracticeMode || phase !== 'cognitive-nback' || nbackIndex >= nbackTrials.length) return;
+    if (nbackAdvancingRef.current) return;
+    nbackAdvancingRef.current = true;
     if (nbackIndex === 0) recordTaskStart('n_back');
     const rt = performance.now() - nbackStartRef.current;
     const trial = nbackTrials[nbackIndex];
@@ -701,15 +671,8 @@ export function DemoGuard() {
       setNbackIndex((i) => i + 1);
       nbackStartRef.current = performance.now();
     }
+    window.setTimeout(() => { nbackAdvancingRef.current = false; }, 150);
   }, [nbackPracticeMode, phase, nbackIndex, nbackTrials, nbackResults]);
-
-  const handleSkipNBack = useCallback(() => {
-    setCogNBackSignal(null);
-    const nodes = generateTrailTapNodes(5);
-    setTrailNodes(nodes);
-    setTrailEvents([]);
-    setPhase('cognitive-trail-tap');
-  }, []);
 
   // ── Cognitive Trail Tap ──
   const handleTrailTap = useCallback((nodeId: number) => {
@@ -746,11 +709,6 @@ export function DemoGuard() {
       setPhase('voice-proof');
     }
   }, [phase, trailEvents, trailNodes]);
-
-  const handleSkipTrailTap = useCallback(() => {
-    setCogTrailTapSignal(null);
-    setPhase('voice-proof');
-  }, []);
 
   const handleReviewContinue = useCallback(() => {
     setPhase('device-signals');
@@ -1155,10 +1113,7 @@ export function DemoGuard() {
                   </button>
                 ))}
               </div>
-              {stroopPracticeFeedback && (
-                <p style={{ marginTop: 12, fontSize: 14, color: stroopPracticeFeedback.startsWith('Compris') ? 'var(--dg-green)' : 'var(--dg-amber)' }}>{stroopPracticeFeedback}</p>
-              )}
-            </>
+</>
           ) : stroopIndex < stroopTrials.length ? (
             <>
               <p className="dg-challenge-sub">Essai {stroopIndex + 1} / {stroopTrials.length} — Touche la <strong>coulour</strong> affichée</p>
@@ -1177,10 +1132,7 @@ export function DemoGuard() {
                   </button>
                 ))}
               </div>
-              <div style={{ marginTop: 16 }}>
-                <button onClick={handleSkipStroop} className="dg-btn dg-btn-secondary">Passer</button>
-              </div>
-            </>
+</>
           ) : null}
         </div>
       )}
@@ -1224,8 +1176,7 @@ export function DemoGuard() {
                   ⌫
                 </button>
                 <button onClick={handleDigitSpanSubmit} disabled={!digitSpanInput} className="dg-btn dg-btn-primary">Valider</button>
-                <button onClick={handleSkipDigitSpan} className="dg-btn dg-btn-secondary">Passer</button>
-              </div>
+</div>
             </>
           )}
         </div>
@@ -1243,10 +1194,7 @@ export function DemoGuard() {
                 <button onClick={() => handleNBackPracticeResponse(true)} className="dg-nback-btn" style={{ background: '#22c55e' }}>OUI</button>
                 <button onClick={() => handleNBackPracticeResponse(false)} className="dg-nback-btn" style={{ background: '#6b7280' }}>NON</button>
               </div>
-              {nbackPracticeFeedback && (
-                <p style={{ marginTop: 12, fontSize: 14, color: nbackPracticeFeedback.startsWith('Compris') ? 'var(--dg-green)' : 'var(--dg-amber)' }}>{nbackPracticeFeedback}</p>
-              )}
-            </>
+</>
           ) : nbackIndex < nbackTrials.length ? (
             <>
               <p className="dg-challenge-sub">Essai {nbackIndex + 1} / {nbackTrials.length} — Même symbole que le précédent ?</p>
@@ -1255,10 +1203,7 @@ export function DemoGuard() {
                 <button onClick={() => handleNBackResponse(true)} className="dg-nback-btn" style={{ background: '#22c55e' }}>OUI</button>
                 <button onClick={() => handleNBackResponse(false)} className="dg-nback-btn" style={{ background: '#6b7280' }}>NON</button>
               </div>
-              <div style={{ marginTop: 16 }}>
-                <button onClick={handleSkipNBack} className="dg-btn dg-btn-secondary">Passer</button>
-              </div>
-            </>
+</>
           ) : null}
         </div>
       )}
@@ -1280,10 +1225,7 @@ export function DemoGuard() {
               </button>
             ))}
           </div>
-          <div style={{ marginTop: 16 }}>
-            <button onClick={handleSkipTrailTap} className="dg-btn dg-btn-secondary">Passer</button>
-          </div>
-        </div>
+</div>
       )}
 
       {/* Voice proof (single capture) */}
