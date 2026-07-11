@@ -33,10 +33,11 @@
 .dg-hero {
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.08));
   border: 1px solid var(--dg-border);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 10px;
+  padding: 10px 12px;
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .dg-hero::before {
@@ -47,7 +48,7 @@
 }
 
 .dg-hero-title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.5px;
   background: linear-gradient(135deg, var(--dg-cyan), var(--dg-violet));
@@ -68,7 +69,7 @@
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .dg-chip {
@@ -348,15 +349,6 @@
   display: flex;
 }
 
-.dg-sticky-bar.dg-sticky-mini {
-  padding: 6px 12px;
-  padding-bottom: calc(6px + env(safe-area-inset-bottom));
-}
-
-.dg-sticky-bar.dg-sticky-mini .dg-sticky-actions {
-  display: none;
-}
-
 .dg-sticky-status {
   flex: 1;
   display: flex;
@@ -516,10 +508,11 @@
 }
 
 .dg-stroop-word {
-  font-size: 42px;
+  font-size: 36px;
   font-weight: 900;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   line-height: 1.1;
+  text-align: center;
 }
 
 .dg-stroop-grid {
@@ -536,11 +529,14 @@
   border-radius: 12px;
   border: none;
   color: #fff;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
   cursor: pointer;
   touch-action: manipulation;
   padding: 12px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ddg-nav-back {
@@ -558,26 +554,34 @@
   position: relative;
   width: 100%;
   max-width: 320px;
-  height: 340px;
+  height: clamp(280px, 45vh, 380px);
   margin: 0 auto;
   border: 1px solid var(--dg-border);
   border-radius: 12px;
   background: rgba(15, 23, 42, 0.6);
   overflow: hidden;
+  touch-action: manipulation;
 }
 
 .dg-trail-node {
   position: absolute;
-  width: 48px;
-  height: 48px;
-  border-radius: 24px;
   border: 2px solid var(--dg-cyan);
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(15, 23, 42, 0.85);
   color: var(--dg-text-bright);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   cursor: pointer;
   touch-action: manipulation;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.dg-trail-node:active {
+  transform: scale(0.92);
+  border-color: var(--dg-green);
 }
 
 .dg-digit-display {
@@ -694,11 +698,10 @@
     padding: 16px;
     gap: 12px;
   }
-  .dg-hero { padding: 16px 18px; }
-  .dg-hero-title { font-size: 20px; }
+  .dg-hero { padding: 14px 16px; }
+  .dg-hero-title { font-size: 18px; }
   .dg-card { padding: 16px; }
-  .dg-stroop-word { font-size: 48px; }
+  .dg-stroop-word { font-size: 44px; }
   .dg-nback-letter { font-size: 64px; }
   .dg-digit-display { font-size: 40px; }
-  .dg-trail-area { height: 380px; }
 }

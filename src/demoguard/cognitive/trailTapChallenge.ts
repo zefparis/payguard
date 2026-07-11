@@ -26,20 +26,49 @@ export interface TrailTapEvent {
   correct: boolean;
 }
 
-export function generateTrailTapNodes(count: number = TRAIL_TAP_MIN_NODES): TrailTapNode[] {
-  const nodes: TrailTapNode[] = [];
-  const padding = 40;
-  const width = 300 - padding * 2;
-  const height = 400 - padding * 2;
+export interface NormalizedTrailPoint {
+  id: number;
+  nx: number;
+  ny: number;
+}
 
-  for (let i = 0; i < count; i++) {
-    nodes.push({
-      id: i + 1,
-      x: padding + Math.random() * width,
-      y: padding + Math.random() * height,
-    });
-  }
-  return nodes;
+const NORMALIZED_TRAIL_POINTS: NormalizedTrailPoint[] = [
+  { id: 1, nx: 0.22, ny: 0.72 },
+  { id: 2, nx: 0.78, ny: 0.45 },
+  { id: 3, nx: 0.48, ny: 0.25 },
+  { id: 4, nx: 0.18, ny: 0.48 },
+  { id: 5, nx: 0.68, ny: 0.78 },
+  { id: 6, nx: 0.82, ny: 0.20 },
+  { id: 7, nx: 0.35, ny: 0.55 },
+];
+
+export function generateNormalizedTrailPoints(count: number = TRAIL_TAP_MIN_NODES): NormalizedTrailPoint[] {
+  return NORMALIZED_TRAIL_POINTS.slice(0, count);
+}
+
+export function computeTrailTapLayout(
+  areaWidth: number,
+  areaHeight: number,
+  normalizedPoints: NormalizedTrailPoint[],
+  nodeRadius: number = 24,
+): TrailTapNode[] {
+  const padding = nodeRadius + 8;
+  const usableWidth = Math.max(0, areaWidth - padding * 2);
+  const usableHeight = Math.max(0, areaHeight - padding * 2);
+
+  return normalizedPoints.map((p) => ({
+    id: p.id,
+    x: Math.round(padding + Math.max(0, Math.min(1, p.nx)) * usableWidth),
+    y: Math.round(padding + Math.max(0, Math.min(1, p.ny)) * usableHeight),
+  }));
+}
+
+export function computeNodeRadius(areaWidth: number): number {
+  return Math.round(Math.max(20, Math.min(32, areaWidth * 0.08)));
+}
+
+export function generateTrailTapNodes(count: number = TRAIL_TAP_MIN_NODES): TrailTapNode[] {
+  return computeTrailTapLayout(300, 400, generateNormalizedTrailPoints(count));
 }
 
 function distance(a: TrailTapNode, b: TrailTapNode): number {

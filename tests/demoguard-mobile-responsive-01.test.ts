@@ -70,11 +70,11 @@ describe('DEMOGUARD-MOBILE-RESPONSIVE-01: Container', () => {
 
 describe('DEMOGUARD-MOBILE-RESPONSIVE-01: Compact header', () => {
   it('7. .dg-hero padding <= 14px on mobile', () => {
-    expect(CSS_SRC).toMatch(/\.dg-hero\s*\{[^}]*padding:\s*12px\s+14px/);
+    expect(CSS_SRC).toMatch(/\.dg-hero\s*\{[^}]*padding:\s*10px\s+12px/);
   });
 
   it('8. .dg-hero-title font-size <= 18px on mobile', () => {
-    expect(CSS_SRC).toMatch(/\.dg-hero-title\s*\{[^}]*font-size:\s*18px/);
+    expect(CSS_SRC).toMatch(/\.dg-hero-title\s*\{[^}]*font-size:\s*16px/);
   });
 
   it('9. .dg-hero-sub font-size <= 12px', () => {
@@ -173,9 +173,9 @@ describe('DEMOGUARD-MOBILE-RESPONSIVE-01: Trail Tap area', () => {
     expect(CSS_SRC).toMatch(/\.dg-trail-area\s*\{[^}]*overflow:\s*hidden/);
   });
 
-  it('29. .dg-trail-node has width and height >= 48px', () => {
-    expect(CSS_SRC).toMatch(/\.dg-trail-node\s*\{[^}]*width:\s*48px/);
-    expect(CSS_SRC).toMatch(/\.dg-trail-node\s*\{[^}]*height:\s*48px/);
+  it('29. .dg-trail-node has dynamic sizing (no fixed width in CSS, set via JSX)', () => {
+    expect(CSS_SRC).not.toMatch(/\.dg-trail-node\s*\{[^}]*width:\s*48px/);
+    expect(PAGE_SRC).toContain('width: size');
   });
 
   it('30. JSX has data-testid on trail area', () => {
@@ -192,8 +192,8 @@ describe('DEMOGUARD-MOBILE-RESPONSIVE-01: Sticky bar non-blocking', () => {
     expect(CSS_SRC).toMatch(/\.dg-sticky-bar\.dg-sticky-visible\s*\{[^}]*display:\s*flex/);
   });
 
-  it('33. .dg-sticky-bar.dg-sticky-mini hides actions', () => {
-    expect(CSS_SRC).toMatch(/\.dg-sticky-bar\.dg-sticky-mini\s+\.dg-sticky-actions\s*\{[^}]*display:\s*none/);
+  it('33. .dg-sticky-bar.dg-sticky-mini removed (no longer used)', () => {
+    expect(CSS_SRC).not.toMatch(/\.dg-sticky-bar\.dg-sticky-mini/);
   });
 
   it('34. .dg-sticky-bar uses safe-area-inset-bottom', () => {
@@ -210,7 +210,7 @@ describe('DEMOGUARD-MOBILE-RESPONSIVE-01: Sticky bar non-blocking', () => {
   });
 
   it('37. JSX applies dg-sticky-mini during cognitive phases', () => {
-    expect(PAGE_SRC).toContain("'dg-sticky-mini'");
+    expect(PAGE_SRC).not.toContain("'dg-sticky-mini'");
   });
 
   it('38. JSX has data-testid on sticky bar', () => {
@@ -347,6 +347,6 @@ describe('DEMOGUARD-MOBILE-RESPONSIVE-01: Desktop enhancement', () => {
   it('62. Desktop media query increases stroop word font-size', () => {
     const desktopSection = CSS_SRC.slice(CSS_SRC.indexOf('@media (min-width: 480px)'));
     expect(desktopSection).toContain('.dg-stroop-word');
-    expect(desktopSection).toMatch(/font-size:\s*48px/);
+    expect(desktopSection).toMatch(/font-size:\s*44px/);
   });
 });

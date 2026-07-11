@@ -96,10 +96,13 @@ import {
   type NBackTrialResult,
 } from '../demoguard/cognitive/nBackChallenge';
 import {
-  generateTrailTapNodes,
   computeTrailTapResult,
+  computeTrailTapLayout,
+  computeNodeRadius,
+  generateNormalizedTrailPoints,
   type TrailTapNode,
   type TrailTapEvent,
+  type NormalizedTrailPoint,
 } from '../demoguard/cognitive/trailTapChallenge';
 import { computeCognitiveSummary } from '../demoguard/cognitive/cognitiveScoring';
 import {
@@ -296,6 +299,11 @@ export function DemoGuard() {
   const [trailNodes, setTrailNodes] = useState<TrailTapNode[]>([]);
   const [trailEvents, setTrailEvents] = useState<TrailTapEvent[]>([]);
   const trailStartRef = useRef<number>(0);
+  const trailAreaRef = useRef<HTMLDivElement | null>(null);
+  const [trailAreaSize, setTrailAreaSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const trailNormalizedRef = useRef<NormalizedTrailPoint[]>([]);
+  const trailEventsRef = useRef<TrailTapEvent[]>([]);
+  trailEventsRef.current = trailEvents;
 
   // Stroop practice state
   const [stroopPracticeTrials, setStroopPracticeTrials] = useState<StroopTrialConfig[]>([]);
@@ -679,8 +687,7 @@ export function DemoGuard() {
       if (next.length >= nbackTrials.length) {
         const sig = computeNBackResult(next);
         setCogNBackSignal(sig);
-        const nodes = generateTrailTapNodes(5);
-        setTrailNodes(nodes);
+        trailNormalizedRef.current = generateNormalizedTrailPoints(5);
         setTrailEvents([]);
         setPhase('cognitive-trail-tap');
         trailStartRef.current = 0;
@@ -728,6 +735,34 @@ export function DemoGuard() {
       setPhase('voice-proof');
     }
   }, [phase, trailEvents, trailNodes]);
+
+  // ── Trail Tap: measure area and compute node positions dynamically ──
+  useEffect(() => {
+    if (phase !== 'cognitive-trail-tap') return;
+    const el = trailAreaRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      if (w > 0 && h > 0) {
+        setTrailAreaSize({ w, h });
+        const radius = computeNodeRadius(w);
+        const nodes = computeTrailTapLayout(w, h, trailNormalizedRef.current, radius);
+        setTrailNodes(nodes);
+      }
+    };
+
+    measure();
+
+    const ro = new ResizeObserver(() => {
+      measure();
+    });
+    ro.observe(el);
+
+    return () => ro.disconnect();
+  }, [phase]);
 
   const handleReviewContinue = useCallback(() => {
     setPhase('device-signals');
@@ -1116,7 +1151,8 @@ export function DemoGuard() {
           <h3 className="dg-challenge-title">Test 2 — Couleurs</h3>
           {stroopPracticeMode ? (
             <>
-              <p className="dg-challenge-sub">Essai {stroopPracticeIndex + 1} / {stroopPracticeTrials.length} — Touche la <strong>couleur</strong> du mot, pas le mot lui-même</p>
+              <p className="dg-challenge-sub">Touche la <strong>couleur du texte</strong>, pas le mot écrit. Exemple : si le mot « ROUGE » est écrit en bleu, touche « Bleu ».</p>
+              <p className="dg-challenge-sub" style={{ opacity: 0.7 }}>Essai {stroopPracticeIndex + 1} / {stroopPracticeTrials.length}</p>
               <div className="dg-stroop-word" style={{ color: stroopPracticeTrials[stroopPracticeIndex].displayColor === 'red' ? '#ef4444' : stroopPracticeTrials[stroopPracticeIndex].displayColor === 'blue' ? '#3b82f6' : stroopPracticeTrials[stroopPracticeIndex].displayColor === 'green' ? '#22c55e' : '#eab308' }}>
                 {stroopPracticeTrials[stroopPracticeIndex].word.toUpperCase()}
               </div>
@@ -1135,7 +1171,8 @@ export function DemoGuard() {
 </>
           ) : stroopIndex < stroopTrials.length ? (
             <>
-              <p className="dg-challenge-sub">Essai {stroopIndex + 1} / {stroopTrials.length} — Touche la <strong>couleur</strong> affichée</p>
+              <p className="dg-challenge-sub">Touche la <strong>couleur du texte</strong>, pas le mot écrit.</p>
+              <p className="dg-challenge-sub" style={{ opacity: 0.7 }}>Essai {stroopIndex + 1} / {stroopTrials.length}</p>
               <div className="dg-stroop-word" style={{ color: stroopTrials[stroopIndex].displayColor === 'red' ? '#ef4444' : stroopTrials[stroopIndex].displayColor === 'blue' ? '#3b82f6' : stroopTrials[stroopIndex].displayColor === 'green' ? '#22c55e' : '#eab308' }}>
                 {stroopTrials[stroopIndex].word.toUpperCase()}
               </div>
@@ -1231,17 +1268,28 @@ export function DemoGuard() {
         <div className="dg-card dg-challenge-area" data-testid="dg-trail-tap-card">
           <h3 className="dg-challenge-title">Test 5 — Chemin</h3>
           <p className="dg-challenge-sub">Touche les points dans l'ordre 1 → {trailNodes.length}</p>
-          <div className="dg-trail-area" data-testid="dg-trail-area">
-            {trailNodes.map((node) => (
-              <button
-                key={node.id}
-                onClick={() => handleTrailTap(node.id)}
-                className="dg-trail-node"
-                style={{ left: node.x, top: node.y }}
-              >
-                {node.id}
-              </button>
-            ))}
+          <div className="dg-trail-area" data-testid="dg-trail-area" ref={trailAreaRef}>
+            {trailNodes.map((node) => {
+              const radius = computeNodeRadius(trailAreaSize.w || 300);
+              const size = radius * 2;
+              return (
+                <button
+                  key={node.id}
+                  onClick={() => handleTrailTap(node.id)}
+                  className="dg-trail-node"
+                  style={{
+                    left: node.x - radius,
+                    top: node.y - radius,
+                    width: size,
+                    height: size,
+                    borderRadius: '50%',
+                  }}
+                  data-testid={`dg-trail-node-${node.id}`}
+                >
+                  {node.id}
+                </button>
+              );
+            })}
           </div>
 </div>
       )}
@@ -1359,8 +1407,8 @@ export function DemoGuard() {
         </div>
       )}
 
-      {/* ═══ 3. Signal Matrix (8 signals) ═══ */}
-      {phase !== 'device-signals' && phase !== 'idle' && (motionSignal || orientationSignal || touchSignal || visibilitySignal || networkSignal) && (
+      {/* ═══ 3. Signal Matrix (8 signals) — hidden during cognitive tests to prevent layout shift ═══ */}
+      {phase !== 'device-signals' && phase !== 'idle' && phase !== 'cognitive-stroop' && phase !== 'cognitive-digit-span' && phase !== 'cognitive-nback' && phase !== 'cognitive-trail-tap' && phase !== 'voice-proof' && phase !== 'cognitive-intro' && (motionSignal || orientationSignal || touchSignal || visibilitySignal || networkSignal) && (
         <div className="dg-card">
           <h3 className="dg-card-title"><span className="dg-card-title-icon" />Signaux</h3>
           <div className="dg-grid">
@@ -1589,8 +1637,6 @@ export function DemoGuard() {
         className={`dg-sticky-bar ${
           phase === 'readiness' || phase === 'submitting' || phase === 'done' || phase === 'error'
             ? 'dg-sticky-visible'
-            : phase !== 'idle'
-            ? 'dg-sticky-mini'
             : ''
         }`}
         data-testid="dg-sticky-bar"
