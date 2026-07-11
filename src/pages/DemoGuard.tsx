@@ -995,21 +995,21 @@ export function DemoGuard() {
 
   return (
     <div className="dg-page">
-      {/* ═══ 1. Hero / Mission Status ═══ */}
-      <div className="dg-hero">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      {/* ═══ 1. Hero / Mission Status (compact header) ═══ */}
+      <div className="dg-hero" data-testid="dg-hero">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h1 className="dg-hero-title">Contrôle de présence</h1>
             <p className="dg-hero-sub">Démonstration — v{DEMOGUARD_VERSION}</p>
           </div>
-          <button type="button" onClick={() => navigate(ROUTES.HOME)} className="ddg-nav-back">
-            ← Back
+          <button type="button" onClick={() => navigate(ROUTES.HOME)} className="ddg-nav-back" aria-label="Retour">
+            ←
           </button>
         </div>
         <div className="dg-hero-meta">
           <span className={`dg-chip ${missionStatus.cls}`}>{missionStatus.label}</span>
           {sessionPublicId && (
-            <span className="dg-trace-id">
+            <span className="dg-trace-id" data-testid="dg-session-id">
               {sessionPublicId.length > 20
                 ? `${sessionPublicId.slice(0, 8)}…${sessionPublicId.slice(-6)}`
                 : sessionPublicId}
@@ -1112,15 +1112,15 @@ export function DemoGuard() {
 
       {/* Cognitive Stroop → "Couleurs" */}
       {phase === 'cognitive-stroop' && stroopTrials.length > 0 && (
-        <div className="dg-card dg-challenge-area">
+        <div className="dg-card dg-challenge-area" data-testid="dg-stroop-card">
           <h3 className="dg-challenge-title">Test 2 — Couleurs</h3>
           {stroopPracticeMode ? (
             <>
-              <p className="dg-challenge-sub">Essai {stroopPracticeIndex + 1} / {stroopPracticeTrials.length} — Touche la <strong>coulour</strong> du mot, pas le mot lui-même</p>
+              <p className="dg-challenge-sub">Essai {stroopPracticeIndex + 1} / {stroopPracticeTrials.length} — Touche la <strong>couleur</strong> du mot, pas le mot lui-même</p>
               <div className="dg-stroop-word" style={{ color: stroopPracticeTrials[stroopPracticeIndex].displayColor === 'red' ? '#ef4444' : stroopPracticeTrials[stroopPracticeIndex].displayColor === 'blue' ? '#3b82f6' : stroopPracticeTrials[stroopPracticeIndex].displayColor === 'green' ? '#22c55e' : '#eab308' }}>
                 {stroopPracticeTrials[stroopPracticeIndex].word.toUpperCase()}
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+              <div className="dg-stroop-grid" data-testid="dg-stroop-grid">
                 {STROOP_COLORS.map((color) => (
                   <button
                     key={color}
@@ -1135,11 +1135,11 @@ export function DemoGuard() {
 </>
           ) : stroopIndex < stroopTrials.length ? (
             <>
-              <p className="dg-challenge-sub">Essai {stroopIndex + 1} / {stroopTrials.length} — Touche la <strong>coulour</strong> affichée</p>
+              <p className="dg-challenge-sub">Essai {stroopIndex + 1} / {stroopTrials.length} — Touche la <strong>couleur</strong> affichée</p>
               <div className="dg-stroop-word" style={{ color: stroopTrials[stroopIndex].displayColor === 'red' ? '#ef4444' : stroopTrials[stroopIndex].displayColor === 'blue' ? '#3b82f6' : stroopTrials[stroopIndex].displayColor === 'green' ? '#22c55e' : '#eab308' }}>
                 {stroopTrials[stroopIndex].word.toUpperCase()}
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+              <div className="dg-stroop-grid" data-testid="dg-stroop-grid">
                 {STROOP_COLORS.map((color) => (
                   <button
                     key={color}
@@ -1158,7 +1158,7 @@ export function DemoGuard() {
 
       {/* Cognitive Digit Span → "Mémoire courte" */}
       {phase === 'cognitive-digit-span' && digitSpanTrials.length > 0 && digitSpanIndex < digitSpanTrials.length && (
-        <div className="dg-card dg-challenge-area">
+        <div className="dg-card dg-challenge-area" data-testid="dg-digit-span-card">
           <h3 className="dg-challenge-title">Test 3 — Mémoire courte</h3>
           <p className="dg-challenge-sub">Essai {digitSpanIndex + 1} / {digitSpanTrials.length} — {digitSpanTrials[digitSpanIndex].span} chiffres</p>
           {digitSpanShowDigits ? (
@@ -1166,10 +1166,10 @@ export function DemoGuard() {
           ) : (
             <>
               <p className="dg-challenge-sub">Saisis les chiffres avec les boutons :</p>
-              <div className="dg-digit-input-display" style={{ fontSize: 24, fontWeight: 700, color: 'var(--dg-text-bright)', textAlign: 'center', marginBottom: 16, minHeight: 36 }}>
+              <div className="dg-digit-input-display" style={{ fontSize: 24, fontWeight: 700, color: 'var(--dg-text-bright)', textAlign: 'center', marginBottom: 12, minHeight: 36 }}>
                 {digitSpanInput || '—'}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, maxWidth: 320, margin: '0 auto' }}>
+              <div className="dg-digit-keypad" data-testid="dg-digit-keypad">
                 {['1','2','3','4','5','6','7','8','9','0'].map((d) => (
                   <button
                     key={d}
@@ -1177,8 +1177,7 @@ export function DemoGuard() {
                       recordDigitSpanKey(false);
                       setDigitSpanInput((v) => v + d);
                     }}
-                    className="dg-stroop-btn"
-                    style={{ background: 'var(--dg-bg-elevated)', color: 'var(--dg-text-bright)', fontSize: 20, fontWeight: 700 }}
+                    className="dg-digit-key"
                   >
                     {d}
                   </button>
@@ -1203,13 +1202,13 @@ export function DemoGuard() {
 
       {/* Cognitive N-Back → "Comparaison" */}
       {phase === 'cognitive-nback' && nbackTrials.length > 0 && (
-        <div className="dg-card dg-challenge-area">
+        <div className="dg-card dg-challenge-area" data-testid="dg-nback-card">
           <h3 className="dg-challenge-title">Test 4 — Comparaison</h3>
           {nbackPracticeMode ? (
             <>
               <p className="dg-challenge-sub">Essai {nbackPracticeIndex + 1} / {nbackPracticeTrials.length} — Ce symbole est-il le même que le précédent ?</p>
               <div className="dg-nback-letter">{nbackPracticeTrials[nbackPracticeIndex].letter}</div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <div className="dg-nback-btns" data-testid="dg-nback-btns">
                 <button onClick={() => handleNBackPracticeResponse(true)} className="dg-nback-btn" style={{ background: '#22c55e' }}>OUI</button>
                 <button onClick={() => handleNBackPracticeResponse(false)} className="dg-nback-btn" style={{ background: '#6b7280' }}>NON</button>
               </div>
@@ -1218,7 +1217,7 @@ export function DemoGuard() {
             <>
               <p className="dg-challenge-sub">Essai {nbackIndex + 1} / {nbackTrials.length} — Même symbole que le précédent ?</p>
               <div className="dg-nback-letter">{nbackTrials[nbackIndex].letter}</div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <div className="dg-nback-btns" data-testid="dg-nback-btns">
                 <button onClick={() => handleNBackResponse(true)} className="dg-nback-btn" style={{ background: '#22c55e' }}>OUI</button>
                 <button onClick={() => handleNBackResponse(false)} className="dg-nback-btn" style={{ background: '#6b7280' }}>NON</button>
               </div>
@@ -1229,10 +1228,10 @@ export function DemoGuard() {
 
       {/* Cognitive Trail Tap → "Chemin" */}
       {phase === 'cognitive-trail-tap' && trailNodes.length > 0 && (
-        <div className="dg-card dg-challenge-area">
+        <div className="dg-card dg-challenge-area" data-testid="dg-trail-tap-card">
           <h3 className="dg-challenge-title">Test 5 — Chemin</h3>
           <p className="dg-challenge-sub">Touche les points dans l'ordre 1 → {trailNodes.length}</p>
-          <div className="dg-trail-area">
+          <div className="dg-trail-area" data-testid="dg-trail-area">
             {trailNodes.map((node) => (
               <button
                 key={node.id}
@@ -1249,7 +1248,7 @@ export function DemoGuard() {
 
       {/* Voice proof (single capture) */}
       {phase === 'voice-proof' && (
-        <div className="dg-card dg-challenge-area">
+        <div className="dg-card dg-challenge-area" data-testid="dg-voice-card">
           <h3 className="dg-challenge-title">Preuve vocale</h3>
           <p className="dg-challenge-sub">Lis cette phrase à voix haute :</p>
           <p className="dg-phrase">« {generateChallengePhrase(voiceChallengeId)} »</p>
@@ -1286,7 +1285,7 @@ export function DemoGuard() {
 
       {/* Review screen */}
       {phase === 'review' && (
-        <div className="dg-card">
+        <div className="dg-card" data-testid="dg-review-card">
           <h3 className="dg-card-title"><span className="dg-card-title-icon" />Récapitulatif</h3>
           <div className="dg-row"><span className="dg-row-label">Photo</span><span className={`dg-badge ${selfieSignal?.captured ? 'dg-badge-ok' : 'dg-badge-missing'}`}>{selfieSignal?.captured ? 'OK' : '—'}</span></div>
           <div className="dg-row"><span className="dg-row-label">Réflexe</span><span className={`dg-badge ${cogReflexSignal?.quality === 'ok' ? 'dg-badge-ok' : cogReflexSignal ? 'dg-badge-review' : 'dg-badge-missing'}`}>{cogReflexSignal ? cogReflexSignal.quality : '—'}</span></div>
@@ -1585,8 +1584,17 @@ export function DemoGuard() {
         </div>
       )}
 
-      {/* ═══ 9. Sticky Bottom Action Bar ═══ */}
-      <div className="dg-sticky-bar">
+      {/* ═══ 9. Sticky Bottom Action Bar — only visible in review/submitting/done/error ═══ */}
+      <div
+        className={`dg-sticky-bar ${
+          phase === 'readiness' || phase === 'submitting' || phase === 'done' || phase === 'error'
+            ? 'dg-sticky-visible'
+            : phase !== 'idle'
+            ? 'dg-sticky-mini'
+            : ''
+        }`}
+        data-testid="dg-sticky-bar"
+      >
         <div className="dg-sticky-status">
           {phase === 'readiness' && submitBlockReasons.length > 0 ? (
             <>
